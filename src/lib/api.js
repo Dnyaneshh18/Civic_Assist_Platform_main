@@ -138,4 +138,28 @@ export const api = {
   async getAdminAnalysis() {
     return handle(await fetch(`${BASE}/admin/analysis`, { headers: adminHeaders() }));
   },
+
+  async submitResolutionProof(issueId, formData) {
+    return handle(await fetch(`${BASE}/admin/issues/${issueId}/proof`, {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: formData,
+    }));
+  },
+
+  async approveResolution(issueId) {
+    return handle(await fetch(`${BASE}/admin/issues/${issueId}/approve`, {
+      method: 'POST',
+      headers: adminHeaders({ 'Content-Type': 'application/json' }),
+    }));
+  },
+
+  async rejectResolution(issueId, reason) {
+    return handle(await fetch(`${BASE}/admin/issues/${issueId}/reject`, {
+      method: 'POST',
+      headers: adminHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ reason }),
+    }));
+  },
 };
+

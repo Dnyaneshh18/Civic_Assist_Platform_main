@@ -58,6 +58,7 @@ const STATUS_STYLES = {
   pending: 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400',
   open:    'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400',
   inprogress: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
+  under_review: 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400',
   resolved: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400',
   fake: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
 };
@@ -179,9 +180,16 @@ export default function MyReports() {
                       <i className="fas fa-triangle-exclamation mr-1" />Fake
                     </span>
                   ) : (
-                    <span className={`badge text-[10px] font-bold flex-shrink-0 ${STATUS_STYLES[issue.status] || STATUS_STYLES.pending}`}>
-                      {statusLabel(issue.status || 'pending')}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {(issue.resolutionProof?.imageUrl || issue.resolvedImage) && (
+                        <span className="badge text-[9px] font-black bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 flex items-center gap-1">
+                          <i className="fas fa-camera text-[8px]" /> Proof
+                        </span>
+                      )}
+                      <span className={`badge text-[10px] font-bold ${STATUS_STYLES[issue.status] || STATUS_STYLES.pending}`}>
+                        {issue.status === 'under_review' ? 'Under Review' : (statusLabel(issue.status || 'pending'))}
+                      </span>
+                    </div>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1 truncate">

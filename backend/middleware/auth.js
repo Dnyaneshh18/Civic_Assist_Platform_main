@@ -42,14 +42,25 @@ export async function optionalAuth(req, res, next) {
   next();
 }
 
+import { DEPARTMENT_ACCOUNTS } from '../controllers/authController.js';
+
 export function requireAdmin(req, res, next) {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  if (header.slice(7) === 'CIVIC_ADMIN') {
-    req.admin = { role: 'admin' };
+  const token = header.slice(7);
+  if (token === 'CIVIC_ADMIN') {
+    req.admin = { role: 'admin', department: 'All', name: 'Mumbai Central Administrator' };
     return next();
   }
-  return res.status(403).json({ error: 'Admin access required' });
+  if (token.startsWith('DEPT_HEAD_')) {
+    const deptKey = token.replace('DEPT_HEAD_', '');
+    const dept = DEPARTMENT_ACCOUNTS[deptKey];
+    if (dept) {
+      req.admin = { role: 'dept_head', department: dept.department, name: dept.headName, deptKey };
+      return next();
+    }
+  }
+  return res.status(403).json({ error: 'Admin or department access required' });
 }

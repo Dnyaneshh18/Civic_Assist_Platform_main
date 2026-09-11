@@ -28,9 +28,10 @@ const priorityColor = { High: '#ef4444', Medium: '#f59e0b', Low: '#22c55e' };
 
 function statusCls(status, dark) {
   const map = {
-    Pending:     dark ? 'bg-amber-900/40 text-amber-300 border-amber-700'  : 'bg-amber-50 text-amber-700 border-amber-200',
-    'In Progress': dark ? 'bg-blue-900/40 text-blue-300 border-blue-700'   : 'bg-blue-50 text-blue-700 border-blue-200',
-    Resolved:    dark ? 'bg-green-900/40 text-green-300 border-green-700' : 'bg-green-50 text-green-700 border-green-200',
+    Pending:        dark ? 'bg-amber-900/40 text-amber-300 border-amber-700'     : 'bg-amber-50 text-amber-700 border-amber-200',
+    'In Progress':  dark ? 'bg-blue-900/40 text-blue-300 border-blue-700'        : 'bg-blue-50 text-blue-700 border-blue-200',
+    'Under Review': dark ? 'bg-purple-900/40 text-purple-300 border-purple-700'  : 'bg-purple-50 text-purple-700 border-purple-200',
+    Resolved:       dark ? 'bg-green-900/40 text-green-300 border-green-700'    : 'bg-green-50 text-green-700 border-green-200',
   };
   return map[status] || '';
 }
@@ -98,24 +99,116 @@ function ScoreCard({ label, value, icon, dark, large = false }) {
 
 
 
-function ComplaintDetail({ complaint, dark, onClose, onStatusChange, onAssign, onReanalyze }) {
+function ComplaintDetail({
+  complaint,
+  dark,
+  onClose,
+  onStatusChange,
+  onAssign,
+  onReanalyze,
+  onSubmitProof,
+  onApproveResolution,
+  onRejectResolution,
+  isDeptHead,
+  adminDept,
+  adminName,
+}) {
   const dept = DEPT_MAP[complaint.category];
   const isAssigned = !!complaint.assignedTo;
   const isSpam = !!complaint.aiAnalysis?.isSpam;
   const isScanning = complaint.aiAnalysis?.authenticity === 'scanning';
   const hasAI = !isScanning && complaint.aiAnalysis && typeof complaint.aiAnalysis.finalScore === 'number';
-  const [imageOpen, setImageOpen] = useState(false);
+
+  const [lightboxImage, setLightboxImage] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // Department Head Proof Upload State
+  const [proofFile, setProofFile] = useState(null);
+  const [proofPreview, setProofPreview] = useState(null);
+  const [proofNotes, setProofNotes] = useState('');
+  const [proofSubmitting, setProofSubmitting] = useState(false);
+  const [proofError, setProofError] = useState('');
+  const fileInputRef = useRef(null);
 
   const statusMeta = {
-    Pending:       { pill: 'bg-amber-100 text-amber-700',   dot: '#f59e0b' },
-    'In Progress': { pill: 'bg-blue-100 text-blue-700',     dot: '#2563eb' },
-    Resolved:      { pill: 'bg-emerald-100 text-emerald-700', dot: '#059669' },
+    Pending:        { pill: 'bg-amber-100 text-amber-700',      dot: '#f59e0b' },
+    'In Progress':  { pill: 'bg-blue-100 text-blue-700',        dot: '#2563eb' },
+    'Under Review': { pill: 'bg-purple-100 text-purple-700',    dot: '#8b5cf6' },
+    Resolved:       { pill: 'bg-emerald-100 text-emerald-700',  dot: '#059669' },
   };
 
   const askConfirm = (action) => setConfirmAction(action);
   const closeConfirm = () => setConfirmAction(null);
   const runConfirmedAction = () => { confirmAction?.onConfirm?.(); setConfirmAction(null); };
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setProofFile(file);
+    setProofError('');
+    const reader = new FileReader();
+    reader.onload = () => setProofPreview(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleProofSubmit = async (e) => {
+    e?.preventDefault();
+    if (!proofFile) {
+      setProofError('Please choose or take an on-site resolution photo.');
+      return;
+    }
+    setProofSubmitting(true);
+    setProofError('');
+    try {
+      const fd = new FormData();
+      fd.append('photo', proofFile);
+      fd.append('notes', proofNotes.trim());
+      await onSubmitProof(complaint._id, fd);
+      setProofFile(null);
+      setProofPreview(null);
+      setProofNotes('');
+    } catch (err) {
+      setProofError(err.message || 'Failed to upload resolution proof.');
+    } finally {
+      setProofSubmitting(false);
+    }
+  };
+
+  const handleApprove = () => {
+    askConfirm({
+      title: 'Approve Resolution & Close Issue?',
+      message: 'You have inspected the before-and-after work proof. This will officially resolve the complaint across citizen portals and update public timelines.',
+      confirmText: 'Approve & Resolve',
+      icon: 'fa-circle-check',
+      color: '#059669',
+      onConfirm: async () => {
+        setActionLoading(true);
+        try {
+          await onApproveResolution(complaint._id);
+        } catch (err) {
+          console.error('Approve failed:', err);
+        } finally {
+          setActionLoading(false);
+        }
+      },
+    });
+  };
+
+  const handleRejectConfirm = async () => {
+    setActionLoading(true);
+    try {
+      await onRejectResolution(complaint._id, rejectReason);
+      setRejectModalOpen(false);
+      setRejectReason('');
+    } catch (err) {
+      console.error('Reject failed:', err);
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   return (
     <div className="animate-fadeIn space-y-5">
@@ -161,7 +254,7 @@ function ComplaintDetail({ complaint, dark, onClose, onStatusChange, onAssign, o
             <span className="flex items-center gap-1.5"><i className="fas fa-clock text-blue-300" />{complaint.submittedAt}</span>
           </div>
           {complaint.image && (
-            <button onClick={() => setImageOpen(true)}
+            <button onClick={() => setLightboxImage(complaint.image)}
               className="mt-3 px-4 py-2 rounded-xl bg-white/15 backdrop-blur text-white text-xs font-black hover:bg-white/25 transition">
               <i className="fas fa-expand mr-1.5" />View Full Image
             </button>
@@ -169,12 +262,13 @@ function ComplaintDetail({ complaint, dark, onClose, onStatusChange, onAssign, o
         </div>
       </section>
 
-      {/* ── Status Progress Tracker ── */}
+      {/* ── Status Progress Tracker (4 Stages) ── */}
       {!isSpam && (() => {
         const stages = [
-          { label: 'Pending',     icon: 'fa-clock',         color: '#d97706', bg: '#fef3c7' },
-          { label: 'In Progress', icon: 'fa-arrows-rotate', color: '#2563eb', bg: '#dbeafe' },
-          { label: 'Resolved',    icon: 'fa-circle-check',  color: '#059669', bg: '#d1fae5' },
+          { label: 'Pending',      icon: 'fa-clock',         color: '#d97706', bg: '#fef3c7' },
+          { label: 'In Progress',  icon: 'fa-arrows-rotate', color: '#2563eb', bg: '#dbeafe' },
+          { label: 'Under Review', icon: 'fa-camera',        color: '#8b5cf6', bg: '#ede9fe' },
+          { label: 'Resolved',     icon: 'fa-circle-check',  color: '#059669', bg: '#d1fae5' },
         ];
         const activeIdx = stages.findIndex(s => s.label === complaint.status);
         return (
@@ -216,6 +310,176 @@ function ComplaintDetail({ complaint, dark, onClose, onStatusChange, onAssign, o
           </div>
         );
       })()}
+
+      {/* ── Official Resolution Proof: Before vs After Inspector ── */}
+      {complaint.resolutionProof?.imageUrl && (
+        <section className={`rounded-3xl border p-6 shadow-md ${dark ? 'bg-[#1e293b] border-slate-700' : 'bg-white border-slate-100'}`}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-purple-500/15 text-purple-500">
+                <i className="fas fa-camera-rotate text-lg" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className={`text-base font-black ${dark ? 'text-white' : 'text-slate-900'}`}>Resolution Verification Inspector</h3>
+                  {complaint.status === 'Resolved' ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                      <i className="fas fa-circle-check" /> Verified by Mumbai Admin
+                    </span>
+                  ) : complaint.status === 'Under Review' ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 animate-pulse">
+                      <i className="fas fa-clock" /> Awaiting Central Admin Approval
+                    </span>
+                  ) : complaint.resolutionProof.status === 'rejected' ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+                      <i className="fas fa-rotate-left" /> Rework Requested
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                      <i className="fas fa-file-image" /> Proof Attached
+                    </span>
+                  )}
+                </div>
+                <p className={`text-xs mt-0.5 ${dark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  Compare initial citizen complaint against department on-site resolution proof
+                </p>
+              </div>
+            </div>
+            <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold ${dark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-700'}`}>
+              <i className="fas fa-building text-blue-500" />
+              <span>{complaint.resolutionProof.department || dept?.dept || 'Department'}</span>
+            </div>
+          </div>
+
+          {/* Side-by-Side Comparison Grid */}
+          <div className="grid md:grid-cols-2 gap-5">
+            {/* BEFORE */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-amber-500 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-sm shadow-amber-500/50" />
+                  Before (Citizen Complaint)
+                </span>
+                <span className={`text-[11px] ${dark ? 'text-slate-500' : 'text-slate-400'}`}>{complaint.date || complaint.submittedAt}</span>
+              </div>
+              <div
+                onClick={() => complaint.image && setLightboxImage(complaint.image)}
+                className={`relative h-64 rounded-2xl overflow-hidden border cursor-pointer group shadow-sm ${dark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}
+              >
+                {complaint.image ? (
+                  <img src={complaint.image} alt="Before" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
+                    <i className="fas fa-image text-3xl opacity-40 mb-1" />
+                    <span className="text-xs">No initial image</span>
+                  </div>
+                )}
+                {complaint.image && (
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/35 transition-colors flex items-center justify-center">
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity px-3.5 py-1.5 rounded-xl bg-black/75 text-white text-xs font-bold backdrop-blur">
+                      <i className="fas fa-expand mr-1.5" />View Full Photo
+                    </span>
+                  </div>
+                )}
+                <div className="absolute bottom-3 left-3 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur text-white text-[10px] font-black uppercase tracking-wider">
+                  Initial Complaint
+                </div>
+              </div>
+            </div>
+
+            {/* AFTER */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-emerald-500 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
+                  After (Resolved Work Proof)
+                </span>
+                <span className={`text-[11px] ${dark ? 'text-slate-500' : 'text-slate-400'}`}>{complaint.resolutionProof.submittedAt}</span>
+              </div>
+              <div
+                onClick={() => setLightboxImage(complaint.resolutionProof.imageUrl)}
+                className={`relative h-64 rounded-2xl overflow-hidden border-2 border-emerald-500/50 cursor-pointer group shadow-sm ${dark ? 'bg-slate-800' : 'bg-slate-50'}`}
+              >
+                <img src={complaint.resolutionProof.imageUrl} alt="After" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/35 transition-colors flex items-center justify-center">
+                  <span className="opacity-0 group-hover:opacity-100 transition-opacity px-3.5 py-1.5 rounded-xl bg-black/75 text-white text-xs font-bold backdrop-blur">
+                    <i className="fas fa-expand mr-1.5" />View Full Photo
+                  </span>
+                </div>
+                <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest shadow-md">
+                  On-Site Proof
+                </div>
+                <div className="absolute bottom-3 left-3 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur text-white text-[10px] font-black uppercase tracking-wider">
+                  Work Completed
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Department Completion Notes */}
+          {complaint.resolutionProof.notes && (
+            <div className={`mt-4 p-4 rounded-2xl border ${dark ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+              <div className="flex items-center gap-2 mb-1.5 text-xs font-bold">
+                <i className="fas fa-clipboard-check text-emerald-500" />
+                <span className={dark ? 'text-slate-200' : 'text-slate-800'}>Field Completion Notes</span>
+                <span className={`text-[11px] font-normal ${dark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  · Submitted by {complaint.resolutionProof.submittedBy || 'Department Officer'}
+                </span>
+              </div>
+              <p className={`text-xs leading-relaxed italic ${dark ? 'text-slate-300' : 'text-slate-600'}`}>
+                "{complaint.resolutionProof.notes}"
+              </p>
+            </div>
+          )}
+
+          {/* Verification Decision Controls for Mumbai Central Admin */}
+          {!isDeptHead && complaint.status === 'Under Review' && (
+            <div className={`mt-5 p-4 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-4 ${dark ? 'bg-purple-950/25 border-purple-700/50' : 'bg-purple-50 border-purple-200'}`}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center flex-shrink-0 shadow-md">
+                  <i className="fas fa-shield-check text-base" />
+                </div>
+                <div>
+                  <h4 className={`text-sm font-black ${dark ? 'text-purple-300' : 'text-purple-900'}`}>Mumbai Admin Verification Required</h4>
+                  <p className={`text-xs ${dark ? 'text-purple-400/80' : 'text-purple-700'}`}>
+                    Inspect the uploaded proof. If satisfied, approve to mark resolved publicly. Otherwise, request rework with feedback.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={() => setRejectModalOpen(true)}
+                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all active:scale-95 border ${
+                    dark ? 'border-red-700 text-red-300 hover:bg-red-900/30' : 'border-red-300 text-red-600 hover:bg-red-50'
+                  }`}
+                >
+                  <i className="fas fa-rotate-left" />Request Rework
+                </button>
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={handleApprove}
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-md shadow-emerald-600/20 transition-all active:scale-95"
+                >
+                  <i className="fas fa-circle-check" />Approve Resolution
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Notice for Department Head when Under Review */}
+          {isDeptHead && complaint.status === 'Under Review' && (
+            <div className={`mt-5 p-4 rounded-2xl border flex items-center gap-3 ${dark ? 'bg-purple-950/20 border-purple-700/40 text-purple-300' : 'bg-purple-50 border-purple-200 text-purple-800'}`}>
+              <i className="fas fa-clock text-lg text-purple-500" />
+              <div className="text-xs leading-relaxed">
+                <span className="font-bold">Proof submitted to Mumbai Central Administrator.</span> Once approved, the ticket will be closed and verified publicly. If rework is requested, feedback will be shown here.
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* ── Main Grid ── */}
       <div className="grid items-start gap-5 xl:grid-cols-2">
@@ -293,7 +557,7 @@ function ComplaintDetail({ complaint, dark, onClose, onStatusChange, onAssign, o
             )}
           </div>
 
-          {/* Reporter Info — always visible */}
+          {/* Reporter Info */}
           <div className={`rounded-2xl border p-5 shadow-sm ${card(dark)}`}>
             <p className={`text-[10px] font-black uppercase tracking-widest mb-3 ${dark ? 'text-slate-500' : 'text-slate-400'}`}>Reporter Information</p>
             <div className="grid grid-cols-3 gap-3 mb-4">
@@ -318,7 +582,7 @@ function ComplaintDetail({ complaint, dark, onClose, onStatusChange, onAssign, o
           </div>
         </div>
 
-        {/* RIGHT — Admin Actions */}
+        {/* RIGHT — Actions */}
         {isSpam ? (
           /* ── SPAM Panel ── */
           <div className="space-y-4">
@@ -335,7 +599,7 @@ function ComplaintDetail({ complaint, dark, onClose, onStatusChange, onAssign, o
 
               <div className={`rounded-xl p-4 mb-4 text-xs leading-relaxed ${dark ? 'bg-red-900/30 border border-red-700 text-red-200' : 'bg-white border border-red-200 text-red-700'}`}>
                 <p className="font-black mb-1"><i className="fas fa-robot mr-2" />AI Moderation Report</p>
-                <p className="font-medium opacity-80">The image uploaded does not match the reported category or the description provided. This complaint has been automatically queued for manual review.</p>
+                <p className="font-medium opacity-80">The image uploaded does not match the reported category or description. This complaint has been queued for review.</p>
               </div>
 
               <div className="space-y-2.5">
@@ -373,7 +637,7 @@ function ComplaintDetail({ complaint, dark, onClose, onStatusChange, onAssign, o
                 <button
                   onClick={() => askConfirm({
                     title: 'Dismiss & Close?',
-                    message: 'Mark this complaint as resolved / closed without processing. This cannot be undone easily.',
+                    message: 'Mark this complaint as resolved / closed without processing.',
                     confirmText: 'Dismiss Complaint',
                     icon: 'fa-ban',
                     color: '#dc2626',
@@ -387,20 +651,177 @@ function ComplaintDetail({ complaint, dark, onClose, onStatusChange, onAssign, o
                 </button>
               </div>
             </div>
+          </div>
+        ) : isDeptHead ? (
+          /* ── DEPARTMENT HEAD ACTIONS PANEL ── */
+          <div className="space-y-4">
+            {/* If pending: Department Head can accept work */}
+            {complaint.status === 'Pending' && (
+              <div className={`rounded-2xl border p-5 shadow-sm ${card(dark)}`}>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center">
+                    <i className="fas fa-clipboard-question text-base" />
+                  </div>
+                  <div>
+                    <h4 className={`text-sm font-black ${dark ? 'text-white' : 'text-slate-900'}`}>Pending Department Work</h4>
+                    <p className={`text-[11px] ${dark ? 'text-slate-400' : 'text-slate-500'}`}>Accept this ticket to begin on-site resolution</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onStatusChange(complaint._id, 'In Progress');
+                    onAssign(complaint._id, adminName);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white text-xs font-black shadow-md bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 transition-all active:scale-95"
+                >
+                  <i className="fas fa-hand-holding-hand" />Accept Ticket & Begin Field Work
+                </button>
+              </div>
+            )}
 
-            {/* Locked assignment notice */}
-            <div className={`rounded-2xl border p-4 flex items-center gap-3 ${dark ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-slate-50'}`}>
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${dark ? 'bg-slate-700' : 'bg-slate-200'}`}>
-                <i className={`fas fa-lock text-sm ${dark ? 'text-slate-400' : 'text-slate-500'}`} />
+            {/* Department Head Proof Upload Card */}
+            {(complaint.status === 'In Progress' || complaint.status === 'Pending' || complaint.resolutionProof?.status === 'rejected') && (
+              <div className={`rounded-2xl border p-5 shadow-sm ${card(dark)}`}>
+                <div className="flex items-center gap-3 mb-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                  <div className="w-9 h-9 rounded-xl bg-purple-600 text-white flex items-center justify-center">
+                    <i className="fas fa-cloud-arrow-up text-sm" />
+                  </div>
+                  <div>
+                    <h4 className={`text-sm font-black ${dark ? 'text-white' : 'text-slate-900'}`}>Upload Resolution Proof</h4>
+                    <p className={`text-[10px] ${dark ? 'text-slate-400' : 'text-slate-500'}`}>Submit photo proof once work has been completed</p>
+                  </div>
+                </div>
+
+                {complaint.resolutionProof?.status === 'rejected' && (
+                  <div className="p-3 mb-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs">
+                    <p className="font-bold flex items-center gap-1.5"><i className="fas fa-rotate-left" /> Rework Feedback from Mumbai Admin:</p>
+                    <p className="mt-1 opacity-90">"{complaint.resolutionProof.rejectedReason}"</p>
+                  </div>
+                )}
+
+                <form onSubmit={handleProofSubmit} className="space-y-3.5">
+                  {/* Photo picker */}
+                  <div>
+                    <label className={`block text-[10px] font-black uppercase tracking-widest mb-1.5 ${dark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Resolved Site Photo *
+                    </label>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileSelect}
+                      accept="image/*"
+                      className="hidden"
+                    />
+
+                    {proofPreview ? (
+                      <div className="relative rounded-2xl overflow-hidden border-2 border-purple-500 h-44 group">
+                        <img src={proofPreview} alt="Proof preview" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="px-3 py-1.5 rounded-xl bg-white text-slate-900 text-xs font-bold"
+                          >
+                            <i className="fas fa-rotate mr-1" />Change
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setProofFile(null); setProofPreview(null); }}
+                            className="px-3 py-1.5 rounded-xl bg-red-600 text-white text-xs font-bold"
+                          >
+                            <i className="fas fa-trash mr-1" />Remove
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-all ${
+                          dark ? 'border-slate-700 hover:border-purple-500 bg-slate-800/40 hover:bg-slate-800' : 'border-slate-200 hover:border-purple-500 bg-slate-50 hover:bg-purple-50/50'
+                        }`}
+                      >
+                        <i className="fas fa-camera text-2xl text-purple-500 mb-1.5 block" />
+                        <p className={`text-xs font-bold ${dark ? 'text-slate-200' : 'text-slate-700'}`}>Click to choose or take photo</p>
+                        <p className={`text-[10px] mt-0.5 ${dark ? 'text-slate-500' : 'text-slate-400'}`}>Take clear photo of resolved work on site</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Notes input */}
+                  <div>
+                    <label className={`block text-[10px] font-black uppercase tracking-widest mb-1.5 ${dark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Work Completion Notes
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={proofNotes}
+                      onChange={e => setProofNotes(e.target.value)}
+                      placeholder="e.g. Garbage collected, 2 compactor trucks deployed, site disinfected and cleared."
+                      className={`w-full rounded-xl border p-3 text-xs outline-none focus:ring-2 focus:ring-purple-500 ${
+                        dark ? 'bg-slate-800 border-slate-700 text-slate-200 placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400'
+                      }`}
+                    />
+                  </div>
+
+                  {proofError && (
+                    <p className="text-xs text-red-500 font-medium">{proofError}</p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={proofSubmitting || !proofFile}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white text-xs font-black shadow-md bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 transition-all active:scale-95"
+                  >
+                    {proofSubmitting ? (
+                      <>
+                        <i className="fas fa-spinner fa-spin" /> Uploading to Cloudinary & Submitting…
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-paper-plane" /> Submit Proof for Mumbai Admin Verification
+                      </>
+                    )}
+                  </button>
+                </form>
               </div>
-              <div>
-                <p className={`text-xs font-black ${dark ? 'text-slate-400' : 'text-slate-500'}`}>Assignment Locked</p>
-                <p className={`text-[10px] ${dark ? 'text-slate-600' : 'text-slate-400'}`}>Clear spam flag to enable department assignment</p>
+            )}
+
+            {/* Department Head Status Tracker */}
+            {complaint.status === 'Under Review' && (
+              <div className={`rounded-2xl border p-5 shadow-sm ${card(dark)}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-500 flex items-center justify-center flex-shrink-0">
+                    <i className="fas fa-hourglass-half text-base" />
+                  </div>
+                  <div>
+                    <h4 className={`text-sm font-black ${dark ? 'text-white' : 'text-slate-900'}`}>Awaiting Central Admin Review</h4>
+                    <p className={`text-[11px] ${dark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Mumbai Central Administrator will review your uploaded proof. Once approved, the issue will be marked resolved.
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
+
+            {complaint.status === 'Resolved' && (
+              <div className={`rounded-2xl border p-5 shadow-sm ${card(dark)}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center flex-shrink-0">
+                    <i className="fas fa-circle-check text-base" />
+                  </div>
+                  <div>
+                    <h4 className={`text-sm font-black ${dark ? 'text-white' : 'text-slate-900'}`}>Work Approved & Case Closed</h4>
+                    <p className={`text-[11px] ${dark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Resolution verified by Mumbai Central Administrator.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
-          /* ── Normal Admin Actions ── */
+          /* ── MUMBAI CENTRAL ADMIN ACTIONS PANEL ── */
           <div className="space-y-4">
 
             {/* Department Assignment */}
@@ -462,14 +883,15 @@ function ComplaintDetail({ complaint, dark, onClose, onStatusChange, onAssign, o
               )}
             </div>
 
-            {/* Status Update */}
+            {/* Status Update for Mumbai Admin */}
             <div className={`rounded-2xl border p-5 shadow-sm ${card(dark)}`}>
               <p className={`text-[10px] font-black uppercase tracking-widest mb-3 ${dark ? 'text-slate-500' : 'text-slate-400'}`}>Update Status</p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
-                  { label: 'Pending',     icon: 'fa-clock',         color: '#d97706', shadow: 'shadow-amber-200',  grad: 'from-amber-400 to-amber-500' },
-                  { label: 'In Progress', icon: 'fa-arrows-rotate', color: '#2563eb', shadow: 'shadow-blue-200',   grad: 'from-blue-500 to-blue-600', needsAssign: true },
-                  { label: 'Resolved',    icon: 'fa-circle-check',  color: '#059669', shadow: 'shadow-green-200',  grad: 'from-emerald-500 to-emerald-600' },
+                  { label: 'Pending',      icon: 'fa-clock',         color: '#d97706', shadow: 'shadow-amber-200',  grad: 'from-amber-400 to-amber-500' },
+                  { label: 'In Progress',  icon: 'fa-arrows-rotate', color: '#2563eb', shadow: 'shadow-blue-200',   grad: 'from-blue-500 to-blue-600', needsAssign: true },
+                  { label: 'Under Review', icon: 'fa-camera',        color: '#8b5cf6', shadow: 'shadow-purple-200', grad: 'from-purple-500 to-purple-600' },
+                  { label: 'Resolved',     icon: 'fa-circle-check',  color: '#059669', shadow: 'shadow-green-200',  grad: 'from-emerald-500 to-emerald-600' },
                 ].map(s => {
                   const isActive = complaint.status === s.label;
                   return (
@@ -478,7 +900,7 @@ function ComplaintDetail({ complaint, dark, onClose, onStatusChange, onAssign, o
                         if (s.needsAssign && !isAssigned) {
                           askConfirm({
                             title: 'Assign Department First',
-                            message: 'Please assign this complaint to a department before marking it as "In Progress". Use the Department Assignment section above.',
+                            message: 'Please assign this complaint to a department before marking it as "In Progress".',
                             confirmText: 'Got it',
                             icon: 'fa-triangle-exclamation',
                             color: '#d97706',
@@ -495,7 +917,7 @@ function ComplaintDetail({ complaint, dark, onClose, onStatusChange, onAssign, o
                           onConfirm: () => onStatusChange(complaint._id, s.label),
                         });
                       }}
-                      className={`flex flex-col items-center gap-2 py-4 rounded-xl border-2 text-xs font-black transition-all active:scale-95 ${
+                      className={`flex flex-col items-center gap-2 py-3.5 rounded-xl border-2 text-xs font-black transition-all active:scale-95 ${
                         isActive
                           ? `bg-gradient-to-br ${s.grad} text-white border-transparent shadow-lg ${s.shadow}`
                           : dark
@@ -503,8 +925,8 @@ function ComplaintDetail({ complaint, dark, onClose, onStatusChange, onAssign, o
                             : 'border-slate-200 text-slate-400 hover:border-slate-300 hover:bg-slate-50'
                       }`}
                     >
-                      <i className={`fas ${s.icon} text-base`} />
-                      <span className="leading-tight text-center">{s.label}</span>
+                      <i className={`fas ${s.icon} text-sm`} />
+                      <span className="leading-tight text-center text-[11px]">{s.label}</span>
                     </button>
                   );
                 })}
@@ -514,7 +936,7 @@ function ComplaintDetail({ complaint, dark, onClose, onStatusChange, onAssign, o
         )}
       </div>
 
-      {/* ── Activity Timeline (full width, bottom) ── */}
+      {/* ── Activity Timeline ── */}
       <div className={`rounded-2xl border p-6 shadow-sm ${card(dark)}`}>
         <div className="flex items-center gap-2.5 mb-6">
           <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${dark ? 'bg-slate-700' : 'bg-slate-100'}`}>
@@ -545,6 +967,9 @@ function ComplaintDetail({ complaint, dark, onClose, onStatusChange, onAssign, o
                         : ''
                     }`}>
                       <p className={`text-sm font-bold ${dark ? 'text-slate-200' : 'text-slate-800'}`}>{t.event}</p>
+                      {t.notes && (
+                        <p className={`text-xs mt-1 italic ${dark ? 'text-slate-300' : 'text-slate-600'}`}>"{t.notes}"</p>
+                      )}
                       <p className={`text-[10px] mt-0.5 font-medium ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
                         <i className="fas fa-clock mr-1" />{t.time}
                       </p>
@@ -560,16 +985,66 @@ function ComplaintDetail({ complaint, dark, onClose, onStatusChange, onAssign, o
       </div>
 
       {/* ── Image Lightbox ── */}
-      {imageOpen && complaint.image && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
-          onClick={() => setImageOpen(false)} role="dialog" aria-modal="true">
-          <button className="absolute right-5 top-5 w-11 h-11 rounded-full bg-white text-black flex items-center justify-center"
-            onClick={(e) => { e.stopPropagation(); setImageOpen(false); }}>
-            <i className="fas fa-xmark" />
+      {lightboxImage && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm animate-fadeIn"
+          onClick={() => setLightboxImage(null)} role="dialog" aria-modal="true">
+          <button className="absolute right-5 top-5 w-11 h-11 rounded-full bg-white/20 text-white hover:bg-white/40 flex items-center justify-center transition-colors"
+            onClick={(e) => { e.stopPropagation(); setLightboxImage(null); }}>
+            <i className="fas fa-xmark text-lg" />
           </button>
-          <img src={complaint.image} alt={complaint.title}
+          <img src={lightboxImage} alt="Full Preview"
             className="max-h-[88vh] max-w-full rounded-2xl object-contain shadow-2xl"
             onClick={e => e.stopPropagation()} />
+        </div>
+      )}
+
+      {/* ── Reject / Rework Modal for Mumbai Admin ── */}
+      {rejectModalOpen && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fadeIn"
+          onClick={() => setRejectModalOpen(false)}>
+          <div className={`w-full max-w-md rounded-3xl border p-6 shadow-2xl ${dark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-100 text-slate-900'}`}
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl bg-red-500/15 text-red-500 flex items-center justify-center">
+                <i className="fas fa-rotate-left text-base" />
+              </div>
+              <div>
+                <h3 className="text-base font-black">Request Rework</h3>
+                <p className={`text-xs ${dark ? 'text-slate-400' : 'text-slate-500'}`}>Send feedback back to {complaint.resolutionProof?.department || 'Department'}</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <label className={`block text-xs font-bold ${dark ? 'text-slate-300' : 'text-slate-700'}`}>
+                What needs to be corrected? *
+              </label>
+              <textarea
+                rows={4}
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+                placeholder="e.g. Garbage still left on sidewalk corner. Please clean thoroughly and re-submit resolution photo."
+                className={`w-full rounded-2xl border p-3.5 text-xs outline-none focus:ring-2 focus:ring-red-500 ${
+                  dark ? 'bg-slate-800 border-slate-700 text-slate-200 placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400'
+                }`}
+              />
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setRejectModalOpen(false)}
+                  className={`flex-1 py-3 rounded-2xl text-xs font-black transition-all ${dark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={handleRejectConfirm}
+                  className="flex-1 py-3 rounded-2xl text-xs font-black text-white bg-red-600 hover:bg-red-700 shadow-md active:scale-95 transition-all"
+                >
+                  {actionLoading ? <i className="fas fa-spinner fa-spin" /> : 'Send Rework Request'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -679,6 +1154,11 @@ export default function AdminDashboard() {
   const unreadCount = notifs.filter(n => !n.read).length;
   const markAllRead = () => setNotifs(prev => prev.map(n => ({ ...n, read: true })));
 
+  const adminRole = localStorage.getItem('ca_admin_role') || 'admin';
+  const adminName = localStorage.getItem('ca_admin_name') || 'Mumbai Central Admin';
+  const adminDept = localStorage.getItem('ca_admin_dept') || 'All Departments';
+  const isDeptHead = adminRole === 'dept_head';
+
   const handleStatusChange = async (_id, newStatus) => {
     try {
       const updated = await api.updateIssueStatus(_id, newStatus);
@@ -698,6 +1178,48 @@ export default function AdminDashboard() {
       setSelectedComplaint(prev => prev?._id === _id ? updated : prev);
     } catch (err) {
       console.error('Assignment failed:', err.message);
+    }
+  };
+
+  const handleSubmitProof = async (_id, formData) => {
+    try {
+      const updated = await api.submitResolutionProof(_id, formData);
+      setComplaints(prev => prev.map(c => c._id === _id ? updated : c));
+      setSelectedComplaint(prev => prev?._id === _id ? updated : prev);
+      const refreshedStats = await api.getAdminStats();
+      setStats(refreshedStats);
+      return updated;
+    } catch (err) {
+      console.error('Submit proof failed:', err.message);
+      throw err;
+    }
+  };
+
+  const handleApproveResolution = async (_id) => {
+    try {
+      const updated = await api.approveResolution(_id);
+      setComplaints(prev => prev.map(c => c._id === _id ? updated : c));
+      setSelectedComplaint(prev => prev?._id === _id ? updated : prev);
+      const refreshedStats = await api.getAdminStats();
+      setStats(refreshedStats);
+      return updated;
+    } catch (err) {
+      console.error('Approve resolution failed:', err.message);
+      throw err;
+    }
+  };
+
+  const handleRejectResolution = async (_id, reason) => {
+    try {
+      const updated = await api.rejectResolution(_id, reason);
+      setComplaints(prev => prev.map(c => c._id === _id ? updated : c));
+      setSelectedComplaint(prev => prev?._id === _id ? updated : prev);
+      const refreshedStats = await api.getAdminStats();
+      setStats(refreshedStats);
+      return updated;
+    } catch (err) {
+      console.error('Reject resolution failed:', err.message);
+      throw err;
     }
   };
 
@@ -755,14 +1277,27 @@ export default function AdminDashboard() {
       <div className="flex-1 flex flex-col min-h-screen lg:ml-[240px]">
         <header className={`sticky top-0 z-20 border-b px-5 lg:px-8 py-4 flex items-center justify-between shadow-sm transition-colors duration-300 ${headerBg}`}>
           <div>
-            <h1 className={`text-lg font-black capitalize ${textMain}`}>
-              {activeTab === 'dashboard' ? 'Admin Dashboard' : activeTab === 'complaints' ? 'Complaints' : activeTab === 'analysis' ? 'Analysis & Map' : activeTab === 'settings' ? 'Settings' : 'Admin'}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className={`text-lg font-black capitalize ${textMain}`}>
+                {isDeptHead ? `${adminDept} Portal` : (activeTab === 'dashboard' ? 'Admin Dashboard' : activeTab === 'complaints' ? 'Complaints' : activeTab === 'analysis' ? 'Analysis & Map' : activeTab === 'settings' ? 'Settings' : 'Admin')}
+              </h1>
+              {isDeptHead && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-black px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                  <i className="fas fa-building text-[9px]" /> Department Head
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2 mt-0.5">
-              <i className={`fas fa-location-dot text-[10px] text-blue-500`} />
+              <i className={`fas fa-location-dot text-[10px] ${isDeptHead ? 'text-purple-500' : 'text-blue-500'}`} />
               <p className={`text-xs font-medium truncate max-w-[160px] sm:max-w-none ${textMuted}`}>
-                <span className="sm:hidden">BMC · Mumbai</span>
-                <span className="hidden sm:inline">Brihanmumbai Municipal Corporation (BMC) · Mumbai Region</span>
+                {isDeptHead ? (
+                  <span>Department Directory: {adminDept} · BMC Region</span>
+                ) : (
+                  <>
+                    <span className="sm:hidden">BMC · Mumbai</span>
+                    <span className="hidden sm:inline">Brihanmumbai Municipal Corporation (BMC) · Mumbai Region</span>
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -808,12 +1343,14 @@ export default function AdminDashboard() {
             </div>
 
             <div className={`flex items-center gap-2.5 pl-3 border-l ${dark ? 'border-slate-700' : 'border-slate-100'}`}>
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-sm">
-                <i className="fas fa-user-tie text-white text-sm" />
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-sm ${
+                isDeptHead ? 'bg-gradient-to-br from-purple-600 to-indigo-700 text-white' : 'bg-gradient-to-br from-blue-600 to-blue-700 text-white'
+              }`}>
+                <i className={`fas ${isDeptHead ? 'fa-building-user' : 'fa-user-tie'} text-sm`} />
               </div>
               <div className="hidden sm:block">
-                <div className={`text-sm font-bold leading-tight ${textMain}`}>Mumbai Admin</div>
-                <div className={`text-[10px] font-medium ${textMuted}`}>Super Admin</div>
+                <div className={`text-sm font-bold leading-tight ${textMain}`}>{adminName}</div>
+                <div className={`text-[10px] font-medium ${textMuted}`}>{isDeptHead ? adminDept : 'Super Admin · BMC'}</div>
               </div>
             </div>
           </div>
@@ -828,11 +1365,17 @@ export default function AdminDashboard() {
               onStatusChange={handleStatusChange}
               onAssign={handleAssign}
               onReanalyze={handleReanalyze}
+              onSubmitProof={handleSubmitProof}
+              onApproveResolution={handleApproveResolution}
+              onRejectResolution={handleRejectResolution}
+              isDeptHead={isDeptHead}
+              adminDept={adminDept}
+              adminName={adminName}
             />
           ) : (
             <>
-              {activeTab === 'dashboard'   && (loadingData ? <DashboardSkeleton dark={dark} /> : <DashboardTab dark={dark} setActiveTab={setTab} stats={stats} complaints={complaints} />)}
-              {activeTab === 'complaints'  && <ComplaintsTab dark={dark} complaints={complaints} onSelect={setSelectedComplaint} />}
+              {activeTab === 'dashboard'   && (loadingData ? <DashboardSkeleton dark={dark} /> : <DashboardTab dark={dark} setActiveTab={setTab} stats={stats} complaints={complaints} isDeptHead={isDeptHead} adminDept={adminDept} />)}
+              {activeTab === 'complaints'  && <ComplaintsTab dark={dark} complaints={complaints} onSelect={setSelectedComplaint} isDeptHead={isDeptHead} adminDept={adminDept} adminName={adminName} />}
               {activeTab === 'analysis'    && (
                 <AnalysisTab
                   dark={dark}
@@ -1176,14 +1719,31 @@ function DashboardTab({ dark, setActiveTab, stats, complaints }) {
   );
 }
 
-function ComplaintsTab({ dark, complaints, onSelect }) {
+function ComplaintsTab({ dark, complaints, onSelect, isDeptHead, adminDept, adminName }) {
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('All');
+  const [filter, setFilter] = useState(isDeptHead ? 'My Department' : 'All');
+
+  const underReviewCount = complaints.filter(c => c.status === 'Under Review').length;
+
+  const filterOptions = isDeptHead
+    ? ['My Department', 'All', 'Pending', 'In Progress', 'Under Review', 'Resolved']
+    : ['All', 'Under Review', 'Pending', 'In Progress', 'Resolved'];
 
   const filtered = complaints.filter(c => {
-    const matchQ = c.title.toLowerCase().includes(search.toLowerCase()) || c.category.toLowerCase().includes(search.toLowerCase());
-    const matchF = filter === 'All' || c.status === filter;
-    return matchQ && matchF;
+    const matchQ = c.title?.toLowerCase().includes(search.toLowerCase()) || c.category?.toLowerCase().includes(search.toLowerCase()) || c.location?.toLowerCase().includes(search.toLowerCase());
+    if (!matchQ) return false;
+
+    if (filter === 'All') return true;
+    if (filter === 'My Department') {
+      const deptName = adminDept?.toLowerCase();
+      const headName = adminName?.toLowerCase();
+      const catDept = DEPT_MAP[c.category]?.dept?.toLowerCase();
+      const assigned = c.assignedTo?.toLowerCase() || '';
+      return (catDept && deptName && (catDept.includes(deptName) || deptName.includes(catDept))) ||
+             (assigned && deptName && assigned.includes(deptName)) ||
+             (assigned && headName && assigned.includes(headName));
+    }
+    return c.status === filter;
   });
 
   return (
@@ -1193,22 +1753,39 @@ function ComplaintsTab({ dark, complaints, onSelect }) {
           <div className={`flex-1 flex items-center gap-3 border rounded-xl px-4 py-2.5 focus-within:border-blue-400 focus-within:ring-4 transition-all ${dark ? 'border-slate-700 bg-slate-800 focus-within:ring-blue-900/40' : 'border-slate-200 bg-slate-50 focus-within:bg-white focus-within:ring-blue-50'}`}>
             <i className={`fas fa-magnifying-glass text-sm ${dark ? 'text-slate-500' : 'text-slate-300'}`} />
             <input
-              type="text" placeholder="Search by title or category..."
+              type="text" placeholder="Search by title, category, or area..."
               value={search} onChange={e => setSearch(e.target.value)}
               className={`flex-1 bg-transparent text-sm outline-none ${dark ? 'text-slate-200 placeholder:text-slate-600' : 'text-slate-800 placeholder:text-slate-300'}`}
             />
           </div>
           <div className="flex gap-2 flex-wrap">
-            {['All', 'Pending', 'In Progress', 'Resolved'].map(s => (
-              <button key={s} onClick={() => setFilter(s)}
-                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
-                  filter === s
-                    ? 'bg-blue-600 border-blue-600 text-white shadow-sm shadow-blue-200'
-                    : dark
-                      ? 'bg-slate-800 border-slate-700 text-slate-400 hover:border-blue-500 hover:text-blue-400'
-                      : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-600'
-                }`}>{s}</button>
-            ))}
+            {filterOptions.map(s => {
+              const isActive = filter === s;
+              const isReview = s === 'Under Review';
+              return (
+                <button key={s} onClick={() => setFilter(s)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 ${
+                    isActive
+                      ? isReview
+                        ? 'bg-purple-600 border-purple-600 text-white shadow-sm shadow-purple-200'
+                        : 'bg-blue-600 border-blue-600 text-white shadow-sm shadow-blue-200'
+                      : dark
+                        ? 'bg-slate-800 border-slate-700 text-slate-400 hover:border-blue-500 hover:text-blue-400'
+                        : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-600'
+                  }`}>
+                  {s === 'My Department' && <i className="fas fa-building text-[10px]" />}
+                  {isReview && <i className="fas fa-camera text-[10px]" />}
+                  <span>{s}</span>
+                  {isReview && underReviewCount > 0 && (
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                      isActive ? 'bg-white text-purple-700' : 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
+                    }`}>
+                      {underReviewCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -1218,6 +1795,8 @@ function ComplaintsTab({ dark, complaints, onSelect }) {
           const dept = DEPT_MAP[c.category];
           const isReal = !c.aiAnalysis?.isSpam;
           const deptColor = dept?.color || '#2563eb';
+          const hasProof = !!c.resolutionProof?.imageUrl;
+
           return (
             <div
               key={i}
@@ -1237,23 +1816,35 @@ function ComplaintsTab({ dark, complaints, onSelect }) {
 
               {/* Main content */}
               <div className="flex-1 min-w-0 px-4 py-3.5 flex flex-col justify-center gap-1.5">
-                <h3 className={`text-sm font-bold leading-snug group-hover:text-blue-500 transition-colors line-clamp-1 ${dark ? 'text-slate-100' : 'text-slate-900'}`}>{c.title}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className={`text-sm font-bold leading-snug group-hover:text-blue-500 transition-colors line-clamp-1 ${dark ? 'text-slate-100' : 'text-slate-900'}`}>{c.title}</h3>
+                  {hasProof && (
+                    <span className="hidden md:inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex-shrink-0">
+                      <i className="fas fa-camera text-[8px]" /> Proof Attached
+                    </span>
+                  )}
+                </div>
                 <div className={`flex items-center gap-3 flex-wrap text-[11px] font-medium ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
                   <span className="flex items-center gap-1.5">
                     <i className="fas fa-user text-[9px]" />{c.reporter}
                   </span>
                   <span className="hidden sm:flex items-center gap-1.5">
-                    <i className="fas fa-location-dot text-[9px]" />{c.location.split(',').slice(0, 2).join(',')}
+                    <i className="fas fa-location-dot text-[9px]" />{c.location?.split(',').slice(0, 2).join(',')}
                   </span>
                   <span className="flex items-center gap-1.5">
                     <i className="fas fa-clock text-[9px]" />{c.date}
                   </span>
                 </div>
                 {/* Category chip — mobile */}
-                <div className="sm:hidden">
+                <div className="sm:hidden flex items-center gap-1.5 flex-wrap">
                   <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md" style={{ background: `${deptColor}15`, color: deptColor }}>
                     <i className={`fas ${dept?.icon || 'fa-circle'} text-[8px]`} />{c.category}
                   </span>
+                  {hasProof && (
+                    <span className="inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                      <i className="fas fa-camera text-[8px]" /> Proof
+                    </span>
+                  )}
                 </div>
               </div>
 

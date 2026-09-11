@@ -1,4 +1,5 @@
 import express from 'express';
+import multer from 'multer';
 import { requireAdmin } from '../middleware/auth.js';
 import {
   getAdminIssues,
@@ -10,7 +11,15 @@ import {
   getOfficers,
   createOfficer,
   getAdminAnalysis,
+  submitResolutionProof,
+  approveResolution,
+  rejectResolution,
 } from '../controllers/adminController.js';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 const router = express.Router();
 
@@ -23,5 +32,10 @@ router.post('/issues/:id/reanalyze', requireAdmin, reanalyzeIssue);
 router.get('/officers', requireAdmin, getOfficers);
 router.post('/officers', requireAdmin, createOfficer);
 router.get('/analysis', requireAdmin, getAdminAnalysis);
+
+// Department Head Proof & Admin Approval routes
+router.post('/issues/:id/proof', requireAdmin, upload.single('photo'), submitResolutionProof);
+router.post('/issues/:id/approve', requireAdmin, approveResolution);
+router.post('/issues/:id/reject', requireAdmin, rejectResolution);
 
 export default router;

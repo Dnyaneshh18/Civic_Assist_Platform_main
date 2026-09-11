@@ -18,15 +18,30 @@ export default function AdminSidebar({ activeTab, setActiveTab, dark, onToggleDa
   const activeIcon = 'bg-white/20';
   const inactiveIcon = dark ? 'bg-slate-800' : 'bg-slate-100';
 
+  const adminName = localStorage.getItem('ca_admin_name') || 'Mumbai Central Admin';
+  const adminDept = localStorage.getItem('ca_admin_dept') || 'All Departments';
+  const adminRole = localStorage.getItem('ca_admin_role') || 'admin';
+  const isDeptHead = adminRole === 'dept_head';
+
+  const handleSignOut = () => {
+    localStorage.removeItem('ca_token');
+    localStorage.removeItem('ca_admin_role');
+    localStorage.removeItem('ca_admin_name');
+    localStorage.removeItem('ca_admin_dept');
+    navigateTo('adminLogin');
+  };
+
   return (
     <aside className={`hidden lg:flex flex-col fixed left-0 top-0 h-full w-[240px] border-r z-30 shadow-sm transition-colors duration-300 ${bg}`}>
       <div className={`flex items-center gap-3 px-6 py-5 border-b ${dark ? 'border-slate-700' : 'border-slate-100'}`}>
-        <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center shadow-sm shadow-blue-200">
-          <i className="fas fa-shield-halved text-white text-sm" />
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-sm ${isDeptHead ? 'bg-purple-600 shadow-purple-200' : 'bg-blue-600 shadow-blue-200'}`}>
+          <i className={`fas ${isDeptHead ? 'fa-building-user' : 'fa-shield-halved'} text-white text-sm`} />
         </div>
         <div>
           <div className={`text-sm font-black leading-tight ${dark ? 'text-white' : 'text-slate-900'}`}>CivicAssist</div>
-          <div className="text-[10px] text-blue-500 font-bold tracking-widest uppercase leading-tight">Admin Portal</div>
+          <div className={`text-[10px] font-bold tracking-widest uppercase leading-tight ${isDeptHead ? 'text-purple-500' : 'text-blue-500'}`}>
+            {isDeptHead ? 'Dept Portal' : 'Admin Portal'}
+          </div>
         </div>
       </div>
 
@@ -78,7 +93,7 @@ export default function AdminSidebar({ activeTab, setActiveTab, dark, onToggleDa
           <span className="text-sm font-semibold">{dark ? 'Light Mode' : 'Dark Mode'}</span>
         </button>
         <button
-          onClick={() => navigateTo('login')}
+          onClick={handleSignOut}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${dark ? 'text-red-400 hover:bg-red-900/30' : 'text-slate-400 hover:text-red-600 hover:bg-red-50'}`}
         >
           <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${inactiveIcon}`}>
@@ -90,12 +105,12 @@ export default function AdminSidebar({ activeTab, setActiveTab, dark, onToggleDa
 
       <div className={`px-5 py-4 border-t ${dark ? 'border-slate-700' : 'border-slate-50'}`}>
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center flex-shrink-0">
-            <i className="fas fa-user-tie text-white text-xs" />
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isDeptHead ? 'bg-gradient-to-br from-purple-600 to-indigo-700 text-white' : 'bg-gradient-to-br from-blue-600 to-blue-700 text-white'}`}>
+            <i className={`fas ${isDeptHead ? 'fa-building-user' : 'fa-user-tie'} text-xs`} />
           </div>
           <div className="overflow-hidden flex-1">
-            <div className={`text-xs font-bold leading-tight truncate ${dark ? 'text-slate-200' : 'text-slate-800'}`}>Admin Officer</div>
-            <div className={`text-[10px] font-medium truncate ${dark ? 'text-slate-500' : 'text-slate-400'}`}>admin@civicassist.gov.in</div>
+            <div className={`text-xs font-bold leading-tight truncate ${dark ? 'text-slate-200' : 'text-slate-800'}`}>{adminName}</div>
+            <div className={`text-[10px] font-medium truncate ${dark ? 'text-slate-500' : 'text-slate-400'}`}>{isDeptHead ? adminDept : 'Super Admin · BMC'}</div>
           </div>
           <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
         </div>

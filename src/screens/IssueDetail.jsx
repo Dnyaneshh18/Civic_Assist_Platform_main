@@ -53,6 +53,7 @@ export default function IssueDetail() {
   );
   const [comment, setComment] = useState('');
   const [imageOpen, setImageOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState(null);
   const [mapOpen, setMapOpen] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyText, setReplyText] = useState('');
@@ -169,6 +170,132 @@ export default function IssueDetail() {
           </div>
         </div>
       </section>
+
+      {/* ── Official Resolution Proof: Before & After ── */}
+      {(issue.resolutionProof?.imageUrl || issue.resolvedImage) && (() => {
+        const resolvedImageUrl = issue.resolutionProof?.imageUrl || issue.resolvedImage;
+        const isResolved = issue.status === 'resolved';
+        const proofNotes = issue.resolutionProof?.notes;
+        const proofDept = issue.resolutionProof?.department || (issue.assignedTo ? (category ? categoryLabel(category.id) : null) : null);
+        const proofOfficer = issue.resolutionProof?.submittedBy;
+        const proofDate = issue.resolutionProof?.submittedAt;
+
+        return (
+          <section className="animate-slideUp overflow-hidden rounded-3xl border border-border bg-card p-6 shadow-md">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-border">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                  <i className="fas fa-camera-rotate text-xl" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-lg font-black text-foreground">Official Resolution Proof</h2>
+                    {isResolved ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                        <i className="fas fa-circle-check text-xs" /> Verified by Mumbai Central Admin
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                        <i className="fas fa-clock text-xs" /> Under Central Admin Verification
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Department work completion photos verified against initial citizen complaint
+                  </p>
+                </div>
+              </div>
+              {proofDept && (
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-secondary text-xs font-bold text-foreground self-start sm:self-auto">
+                  <i className="fas fa-building text-primary" />
+                  <span>{proofDept}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-5">
+              {/* BEFORE: Citizen Complaint Photo */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-sm shadow-amber-500/50" />
+                    Before (Reported by Citizen)
+                  </span>
+                  <span className="text-[11px] font-medium text-muted-foreground">{timeAgo}</span>
+                </div>
+                <div
+                  onClick={() => issue.image && setPreviewImage(issue.image)}
+                  className="relative h-64 rounded-2xl overflow-hidden border border-border bg-secondary group cursor-pointer shadow-sm"
+                >
+                  {issue.image ? (
+                    <img src={issue.image} alt="Before work" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
+                      <i className="fas fa-image text-3xl opacity-40" />
+                      <span className="text-xs font-semibold">No initial photo</span>
+                    </div>
+                  )}
+                  {issue.image && (
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/35 transition-colors flex items-center justify-center">
+                      <span className="opacity-0 group-hover:opacity-100 transition-opacity px-4 py-2 rounded-xl bg-black/75 text-white text-xs font-bold backdrop-blur">
+                        <i className="fas fa-expand mr-1.5" />View Full Image
+                      </span>
+                    </div>
+                  )}
+                  <div className="absolute bottom-3 left-3 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur text-white text-[10px] font-black uppercase tracking-wider">
+                    Initial Complaint
+                  </div>
+                </div>
+              </div>
+
+              {/* AFTER: Resolved Proof Photo */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
+                    After (Resolved Work Proof)
+                  </span>
+                  {proofDate && (
+                    <span className="text-[11px] font-medium text-muted-foreground">{proofDate}</span>
+                  )}
+                </div>
+                <div
+                  onClick={() => setPreviewImage(resolvedImageUrl)}
+                  className="relative h-64 rounded-2xl overflow-hidden border-2 border-emerald-500/50 bg-secondary group cursor-pointer shadow-sm"
+                >
+                  <img src={resolvedImageUrl} alt="After work completed" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/35 transition-colors flex items-center justify-center">
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity px-4 py-2 rounded-xl bg-black/75 text-white text-xs font-bold backdrop-blur">
+                      <i className="fas fa-expand mr-1.5" />View Full Image
+                    </span>
+                  </div>
+                  <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest shadow-md">
+                    Verified Proof
+                  </div>
+                  <div className="absolute bottom-3 left-3 px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur text-white text-[10px] font-black uppercase tracking-wider">
+                    Work Completed
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {proofNotes && (
+              <div className="mt-5 p-4 rounded-2xl bg-secondary/70 border border-border">
+                <div className="flex items-center gap-2 mb-1.5 text-xs font-bold text-foreground">
+                  <i className="fas fa-clipboard-check text-emerald-500" />
+                  <span>Department Completion Notes</span>
+                  {proofOfficer && (
+                    <span className="text-muted-foreground font-normal">· Submitted by {proofOfficer}</span>
+                  )}
+                </div>
+                <p className="text-sm leading-relaxed text-muted-foreground italic">
+                  "{proofNotes}"
+                </p>
+              </div>
+            )}
+          </section>
+        );
+      })()}
 
       <div className="grid gap-5 xl:grid-cols-[1.08fr_0.92fr]">
         <section className="animate-slideUp rounded-3xl border border-border bg-card p-5 shadow-sm">
@@ -366,6 +493,29 @@ export default function IssueDetail() {
               <Marker position={mapCenter} icon={DETAIL_PIN_ICON} />
             </MapContainer>
           </div>
+        </div>
+      )}
+
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 p-4 backdrop-blur-md animate-fadeIn"
+          onClick={() => setPreviewImage(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            type="button"
+            className="absolute right-5 top-5 flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/40 transition-all shadow-lg"
+            onClick={() => setPreviewImage(null)}
+          >
+            <i className="fas fa-xmark text-lg" />
+          </button>
+          <img
+            src={previewImage}
+            alt="Full Preview"
+            className="max-h-[88vh] max-w-full rounded-2xl object-contain shadow-2xl"
+            onClick={event => event.stopPropagation()}
+          />
         </div>
       )}
     </div>

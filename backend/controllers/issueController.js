@@ -1,11 +1,13 @@
 import { supabase } from '../config/supabase.js';
 import { uploadBuffer } from '../config/cloudinary.js';
 import { runAIAnalysis } from '../services/aiRunner.js';
+import { extractResolutionProof } from './adminController.js';
 
 function formatForClient(issue, currentUserId) {
   const supporters = Array.isArray(issue.supporters) ? issue.supporters : [];
   const likesCount = supporters.length;
   const isLiked = currentUserId ? supporters.includes(currentUserId) : false;
+  const proof = extractResolutionProof(issue);
   return {
     id: issue.id,
     _id: issue.id,
@@ -33,6 +35,8 @@ function formatForClient(issue, currentUserId) {
     })),
     assignedTo: issue.assigned_to ?? issue.assignedTo ?? null,
     timeline: issue.timeline || [],
+    resolutionProof: proof,
+    resolvedImage: proof?.imageUrl || null,
     aiAnalysis: issue.ai_analysis || issue.aiAnalysis || null,
     createdAt: issue.created_at || issue.createdAt,
   };

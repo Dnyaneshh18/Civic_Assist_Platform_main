@@ -20,6 +20,9 @@ export default function AdminLogin() {
     try {
       const result = await api.adminLogin(adminId.trim(), password);
       localStorage.setItem('ca_token', result.token);
+      localStorage.setItem('ca_admin_role', result.role || 'admin');
+      localStorage.setItem('ca_admin_name', result.name || 'Administrator');
+      localStorage.setItem('ca_admin_dept', result.department || 'All');
       navigateTo('adminDashboard');
     } catch (err) {
       setError(err.message || 'Invalid credentials');
@@ -109,8 +112,48 @@ export default function AdminLogin() {
             </div>
             <h2 className="text-2xl font-black text-slate-900 tracking-tight leading-tight">Welcome back,</h2>
             <h2 className="text-2xl font-black text-blue-600 tracking-tight leading-tight">Admin Officer</h2>
-            <p className="text-slate-400 text-sm mt-2">Sign in to access the administrative portal.</p>
-            <p className="text-slate-300 text-xs mt-1 leading-snug">Default: <code className="bg-slate-100 px-1 rounded">ADM-00001</code> · <code className="bg-slate-100 px-1 rounded">admin123</code></p>
+            <p className="text-slate-400 text-sm mt-2">Sign in as Mumbai Central Administrator or Department Head.</p>
+          </div>
+
+          <div className="mb-4">
+            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between">
+              <span>Quick Login Presets</span>
+              <span className="text-blue-600 font-semibold text-[10px]">1-click autofill</span>
+            </p>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={() => { setAdminId('ADM-00001'); setPassword('admin123'); setError(''); }}
+                className={`text-left p-2 rounded-xl border text-[11px] font-bold transition-all ${adminId === 'ADM-00001' ? 'bg-blue-50 border-blue-300 text-blue-700 ring-2 ring-blue-100' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+              >
+                <div className="flex items-center gap-1.5 truncate"><i className="fas fa-crown text-amber-500 text-xs" /> Mumbai Central Admin</div>
+                <span className="text-[9px] text-slate-400 font-medium">Full Municipal Authority</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAdminId('DEPT-WASTE'); setPassword('waste123'); setError(''); }}
+                className={`text-left p-2 rounded-xl border text-[11px] font-bold transition-all ${adminId === 'DEPT-WASTE' ? 'bg-emerald-50 border-emerald-300 text-emerald-700 ring-2 ring-emerald-100' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+              >
+                <div className="flex items-center gap-1.5 truncate"><i className="fas fa-trash text-emerald-600 text-xs" /> Solid Waste Mgmt</div>
+                <span className="text-[9px] text-slate-400 font-medium">Head: Ms. Asha Kulkarni</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAdminId('DEPT-ROAD'); setPassword('road123'); setError(''); }}
+                className={`text-left p-2 rounded-xl border text-[11px] font-bold transition-all ${adminId === 'DEPT-ROAD' ? 'bg-purple-50 border-purple-300 text-purple-700 ring-2 ring-purple-100' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+              >
+                <div className="flex items-center gap-1.5 truncate"><i className="fas fa-road text-purple-600 text-xs" /> Roads & Potholes</div>
+                <span className="text-[9px] text-slate-400 font-medium">Head: Mr. Imran Shaikh</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAdminId('DEPT-WATER'); setPassword('water123'); setError(''); }}
+                className={`text-left p-2 rounded-xl border text-[11px] font-bold transition-all ${adminId === 'DEPT-WATER' ? 'bg-cyan-50 border-cyan-300 text-cyan-700 ring-2 ring-cyan-100' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+              >
+                <div className="flex items-center gap-1.5 truncate"><i className="fas fa-droplet text-cyan-600 text-xs" /> Water Supply</div>
+                <span className="text-[9px] text-slate-400 font-medium">Head: Mr. Sandeep Patil</span>
+              </button>
+            </div>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-3">

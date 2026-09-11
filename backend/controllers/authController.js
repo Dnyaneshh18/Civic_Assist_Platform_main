@@ -123,10 +123,72 @@ export async function completeProfile(req, res) {
   }
 }
 
+export const DEPARTMENT_ACCOUNTS = {
+  'DEPT-WASTE': {
+    password: 'waste123',
+    department: 'Solid Waste Management',
+    headName: 'Ms. Asha Kulkarni',
+    icon: 'fa-trash',
+  },
+  'DEPT-ROAD': {
+    password: 'road123',
+    department: 'Roads & Potholes',
+    headName: 'Mr. Imran Shaikh',
+    icon: 'fa-road',
+  },
+  'DEPT-WATER': {
+    password: 'water123',
+    department: 'Water Supply',
+    headName: 'Mr. Sandeep Patil',
+    icon: 'fa-droplet',
+  },
+  'DEPT-ELEC': {
+    password: 'elec123',
+    department: 'Street Lighting',
+    headName: 'Mr. Rohan Deshmukh',
+    icon: 'fa-bolt',
+  },
+  'DEPT-SEWAGE': {
+    password: 'sewage123',
+    department: 'Sewerage',
+    headName: 'Mr. Prakash More',
+    icon: 'fa-faucet',
+  },
+  'DEPT-PARK': {
+    password: 'park123',
+    department: 'Parks & Gardens',
+    headName: 'Ms. Neha Jadhav',
+    icon: 'fa-tree',
+  },
+};
+
 export function adminLogin(req, res) {
   const { adminId, password } = req.body;
-  if (adminId !== ADMIN_ID || password !== ADMIN_PASSWORD) {
-    return res.status(401).json({ error: 'Invalid admin credentials' });
+  const cleanId = String(adminId || '').trim();
+
+  // 1. Mumbai Central Admin
+  if (cleanId === ADMIN_ID && password === ADMIN_PASSWORD) {
+    return res.json({
+      success: true,
+      token: 'CIVIC_ADMIN',
+      role: 'admin',
+      name: 'Mumbai Central Administrator',
+      department: 'All Departments',
+    });
   }
-  res.json({ success: true, token: 'CIVIC_ADMIN' });
+
+  // 2. Department Head Login
+  const deptAccount = DEPARTMENT_ACCOUNTS[cleanId];
+  if (deptAccount && deptAccount.password === password) {
+    return res.json({
+      success: true,
+      token: `DEPT_HEAD_${cleanId}`,
+      role: 'dept_head',
+      name: deptAccount.headName,
+      department: deptAccount.department,
+      deptKey: cleanId,
+    });
+  }
+
+  return res.status(401).json({ error: 'Invalid admin or department credentials' });
 }

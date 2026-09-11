@@ -1,5 +1,6 @@
 import { supabase } from '../config/supabase.js';
 import { runAIAnalysis } from '../services/aiRunner.js';
+import { uploadBuffer } from '../config/cloudinary.js';
 
 const MUMBAI_ZONES = [
   { name: 'Andheri', lat: 19.1364, lng: 72.8296 },
@@ -56,8 +57,51 @@ function getPriority(likes) {
   return 'Low';
 }
 
+export function extractResolutionProof(issue) {
+  if (!issue) return null;
+  if (issue.resolution_proof && issue.resolution_proof.imageUrl) {
+    return issue.resolution_proof;
+  }
+  const aiProof = (issue.ai_analysis || issue.aiAnalysis)?.resolution_proof;
+  if (aiProof && aiProof.imageUrl) {
+    return aiProof;
+  }
+  const timeline = Array.isArray(issue.timeline) ? issue.timeline : [];
+  const proofEvent = [...timeline].reverse().find(t =>
+    t?.proof?.imageUrl ||
+    (t?.image && (t?.notes || (t?.event && (
+      t.event.toLowerCase().includes('proof') ||
+      t.event.toLowerCase().includes('resolution') ||
+      t.event.toLowerCase().includes('completed')
+    ))))
+  );
+  if (proofEvent) {
+    const p = proofEvent.proof || {};
+    const isApproved = issue.status === 'resolved';
+    const isRejected = issue.status === 'inprogress' && timeline.some(t => t?.event?.toLowerCase().includes('rejected'));
+    return {
+      imageUrl: p.imageUrl || proofEvent.image,
+      notes: p.notes || proofEvent.notes || '',
+      submittedBy: p.submittedBy || 'Department Officer',
+      department: p.department || issue.assigned_to || 'Department',
+      submittedAt: p.submittedAt || proofEvent.time,
+      status: isApproved ? 'approved' : isRejected ? 'rejected' : (p.status || 'pending_approval'),
+      approvedAt: p.approvedAt || null,
+      approvedBy: p.approvedBy || null,
+      rejectedAt: p.rejectedAt || null,
+      rejectedReason: p.rejectedReason || null,
+    };
+  }
+  return null;
+}
+
 function adminStatusLabel(status) {
-  const map = { pending: 'Pending', inprogress: 'In Progress', resolved: 'Resolved' };
+  const map = {
+    pending: 'Pending',
+    inprogress: 'In Progress',
+    under_review: 'Under Review',
+    resolved: 'Resolved'
+  };
   return map[status] || 'Pending';
 }
 
@@ -67,6 +111,7 @@ function formatAdminIssue(issue) {
   const aiAnalysis = issue.ai_analysis || issue.aiAnalysis || {};
   const authenticity = aiAnalysis.authenticity || 'unknown';
   const aiBadge = authenticity === 'fake' ? 'Fake (Spam)' : authenticity === 'real' ? 'Real' : authenticity === 'scanning' ? 'Scanning...' : 'Unknown';
+  const proof = extractResolutionProof(issue);
   return {
     id: issue.complaint_id || issue.complaintId || `#${String(issue.id).slice(-4).toUpperCase()}`,
     _id: String(issue.id),
@@ -87,6 +132,8 @@ function formatAdminIssue(issue) {
     assignedTo: issue.assigned_to ?? issue.assignedTo ?? null,
     timeline: issue.timeline || [],
     likes: likesCount,
+    resolutionProof: proof,
+    resolvedImage: proof?.imageUrl || null,
     aiAnalysis: {
       textScore: aiAnalysis.textScore ?? null,
       imageScore: aiAnalysis.imageScore ?? null,
@@ -106,7 +153,33 @@ export async function getAdminIssues(req, res) {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    res.json((issues || []).map(formatAdminIssue));
+    let list = issues || [];
+
+    // If department head, filter by allowed categories or assigned_to unless all=true
+    const isDeptHead = req.admin?.role === 'dept_head';
+    if (isDeptHead && req.query.all !== 'true') {
+      const deptName = req.admin.department?.toLowerCase();
+      const headName = req.admin.name?.toLowerCase();
+      const allowedCats = req.admin.allowedCategories || [];
+
+      list = list.filter(issue => {
+        const catMatch = allowedCats.includes(issue.category);
+        const assignedMatch = issue.assigned_to && (
+          issue.assigned_to.toLowerCase().includes(deptName) ||
+          issue.assigned_to.toLowerCase().includes(headName) ||
+          (deptName && deptName.includes(issue.assigned_to.toLowerCase()))
+        );
+        return catMatch || assignedMatch;
+      });
+    } else if (req.query.department && req.query.department !== 'All') {
+      const d = req.query.department.toLowerCase();
+      list = list.filter(issue => 
+        (issue.assigned_to && issue.assigned_to.toLowerCase().includes(d)) ||
+        issue.category?.toLowerCase() === d
+      );
+    }
+
+    res.json(list.map(formatAdminIssue));
   } catch (err) {
     console.error('getAdminIssues error:', err.message);
     res.status(500).json({ error: 'Server error' });
@@ -140,11 +213,12 @@ export async function getAdminStats(req, res) {
     const total = all.length;
     const pending = all.filter(i => i.status === 'pending').length;
     const inprogress = all.filter(i => i.status === 'inprogress').length;
+    const underReview = all.filter(i => i.status === 'under_review').length;
     const resolved = all.filter(i => i.status === 'resolved').length;
     const fake = all.filter(i => (i.ai_analysis?.authenticity || i.aiAnalysis?.authenticity) === 'fake').length;
     const real = all.filter(i => (i.ai_analysis?.authenticity || i.aiAnalysis?.authenticity) === 'real').length;
     const unknown = Math.max(0, total - fake - real);
-    res.json({ total, pending, inprogress, resolved, fake, real, unknown });
+    res.json({ total, pending, inprogress, underReview, resolved, fake, real, unknown });
   } catch (err) {
     console.error('getAdminStats error:', err.message);
     res.status(500).json({ error: 'Server error' });
@@ -154,7 +228,12 @@ export async function getAdminStats(req, res) {
 export async function updateIssueStatus(req, res) {
   try {
     const { status } = req.body;
-    const validStatuses = { Pending: 'pending', 'In Progress': 'inprogress', Resolved: 'resolved' };
+    const validStatuses = {
+      Pending: 'pending',
+      'In Progress': 'inprogress',
+      'Under Review': 'under_review',
+      Resolved: 'resolved',
+    };
     const dbStatus = validStatuses[status];
     if (!dbStatus) return res.status(400).json({ error: 'Invalid status' });
 
@@ -494,5 +573,207 @@ export async function getAdminAnalysis(req, res) {
   } catch (err) {
     console.error('getAdminAnalysis error:', err.message);
     res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function submitResolutionProof(req, res) {
+  try {
+    const { id } = req.params;
+    const { notes } = req.body;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Resolution proof photo is required' });
+    }
+
+    const { data: existing, error: findErr } = await supabase
+      .from('issues')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findErr || !existing) return res.status(404).json({ error: 'Issue not found' });
+
+    // Upload to Cloudinary in 'civicassist_resolved' folder
+    const uploadResult = await uploadBuffer(req.file.buffer, 'civicassist_resolved');
+    const resolvedUrl = uploadResult.secure_url;
+
+    const now = new Date().toLocaleString('en-IN', {
+      hour: '2-digit', minute: '2-digit', hour12: true,
+      day: '2-digit', month: 'short', year: 'numeric',
+    });
+
+    const deptName = req.admin?.department || existing.assigned_to || 'Department';
+    const headName = req.admin?.name || 'Department Officer';
+
+    const resolutionProof = {
+      imageUrl: resolvedUrl,
+      notes: notes?.trim() || '',
+      submittedBy: headName,
+      department: deptName,
+      submittedAt: now,
+      status: 'pending_approval',
+    };
+
+    const timelineEvent = {
+      time: now,
+      event: `Work completed by ${deptName} — Resolution proof submitted for Mumbai Admin verification`,
+      icon: 'fa-camera',
+      color: '#8b5cf6',
+      image: resolvedUrl,
+      notes: notes?.trim() || 'Work finished on-site by field team',
+      proof: resolutionProof,
+    };
+
+    const timeline = [...(existing.timeline || []), timelineEvent];
+    const existingAi = existing.ai_analysis || existing.aiAnalysis || {};
+    const updatedAi = {
+      ...existingAi,
+      resolution_proof: resolutionProof,
+    };
+
+    const { data: updated, error: updateErr } = await supabase
+      .from('issues')
+      .update({
+        status: 'under_review',
+        timeline,
+        ai_analysis: updatedAi,
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateErr) throw updateErr;
+    console.log(`Resolution proof submitted for ${id} by ${deptName}: ${resolvedUrl}`);
+    res.json(formatAdminIssue(updated));
+  } catch (err) {
+    console.error('submitResolutionProof error:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to submit resolution proof' });
+  }
+}
+
+export async function approveResolution(req, res) {
+  try {
+    const { id } = req.params;
+
+    const { data: existing, error: findErr } = await supabase
+      .from('issues')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findErr || !existing) return res.status(404).json({ error: 'Issue not found' });
+
+    const now = new Date().toLocaleString('en-IN', {
+      hour: '2-digit', minute: '2-digit', hour12: true,
+      day: '2-digit', month: 'short', year: 'numeric',
+    });
+
+    const currentProof = extractResolutionProof(existing) || {};
+
+    const resolutionProof = {
+      ...currentProof,
+      status: 'approved',
+      approvedAt: now,
+      approvedBy: req.admin?.name || 'Mumbai Central Admin',
+    };
+
+    const timelineEvent = {
+      time: now,
+      event: 'Resolution approved & verified by Mumbai Central Admin — Public ticket resolved',
+      icon: 'fa-circle-check',
+      color: '#059669',
+      image: resolutionProof.imageUrl || null,
+      notes: 'Mumbai Central Admin inspected and verified the resolution proof.',
+      proof: resolutionProof,
+    };
+
+    const timeline = [...(existing.timeline || []), timelineEvent];
+    const existingAi = existing.ai_analysis || existing.aiAnalysis || {};
+    const updatedAi = {
+      ...existingAi,
+      resolution_proof: resolutionProof,
+    };
+
+    const { data: updated, error: updateErr } = await supabase
+      .from('issues')
+      .update({
+        status: 'resolved',
+        timeline,
+        ai_analysis: updatedAi,
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateErr) throw updateErr;
+    console.log(`Resolution approved for ${id} by Mumbai Admin`);
+    res.json(formatAdminIssue(updated));
+  } catch (err) {
+    console.error('approveResolution error:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to approve resolution' });
+  }
+}
+
+export async function rejectResolution(req, res) {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const { data: existing, error: findErr } = await supabase
+      .from('issues')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findErr || !existing) return res.status(404).json({ error: 'Issue not found' });
+
+    const now = new Date().toLocaleString('en-IN', {
+      hour: '2-digit', minute: '2-digit', hour12: true,
+      day: '2-digit', month: 'short', year: 'numeric',
+    });
+
+    const rejectReason = reason?.trim() || 'Work inspection unsatisfied — rework required.';
+    const currentProof = extractResolutionProof(existing) || {};
+
+    const resolutionProof = {
+      ...currentProof,
+      status: 'rejected',
+      rejectedAt: now,
+      rejectedReason: rejectReason,
+    };
+
+    const timelineEvent = {
+      time: now,
+      event: `Resolution rejected by Mumbai Central Admin: "${rejectReason}" — Returned for rework`,
+      icon: 'fa-rotate-left',
+      color: '#ef4444',
+      notes: rejectReason,
+      proof: resolutionProof,
+    };
+
+    const timeline = [...(existing.timeline || []), timelineEvent];
+    const existingAi = existing.ai_analysis || existing.aiAnalysis || {};
+    const updatedAi = {
+      ...existingAi,
+      resolution_proof: resolutionProof,
+    };
+
+    const { data: updated, error: updateErr } = await supabase
+      .from('issues')
+      .update({
+        status: 'inprogress',
+        timeline,
+        ai_analysis: updatedAi,
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateErr) throw updateErr;
+    console.log(`Resolution rejected for ${id} by Mumbai Admin: ${rejectReason}`);
+    res.json(formatAdminIssue(updated));
+  } catch (err) {
+    console.error('rejectResolution error:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to reject resolution' });
   }
 }
