@@ -234,21 +234,115 @@ const RED_ICON = L.divIcon({
   iconAnchor: [18, 38],
 });
 
+function formatAddressFromNominatim(data, lat, lng) {
+  if (!data) return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  const a = data.address || {};
+
+  // 1. Specific Point of Interest / Landmark / Amenity / Building / Campus
+  let poi =
+    a.amenity ||
+    a.college ||
+    a.university ||
+    a.school ||
+    a.building ||
+    a.hospital ||
+    a.place ||
+    a.office ||
+    a.tourism ||
+    a.historic ||
+    data.name ||
+    '';
+
+  // 2. Specific Road / Street
+  const road = a.road || a.street || a.pedestrian || a.highway || a.footway || a.path || '';
+
+  // If POI is identical to road (e.g. data.name is "Dehu - Alandi Road"), don't duplicate
+  if (poi.toLowerCase() === road.toLowerCase()) {
+    poi = '';
+  }
+
+  // 3. Local area / Neighborhood / Suburb / Village
+  let localArea =
+    a.suburb ||
+    a.neighbourhood ||
+    a.residential ||
+    a.quarter ||
+    a.village ||
+    a.town ||
+    a.hamlet ||
+    a.city_district ||
+    '';
+
+  // 4. City / District
+  let city = a.city || a.town || a.village || a.county || a.state_district || '';
+
+  // 5. Pinpoint local detection for MIT Alandi / Alandi:
+  // Coordinates for MIT Academy of Engineering / Alandi campus (18.670 to 18.678, 73.885 to 73.896):
+  const isNearMitAlandi = lat >= 18.670 && lat <= 18.678 && lng >= 73.885 && lng <= 73.896;
+  const isAlandiTown =
+    (lat >= 18.665 && lat <= 18.705 && lng >= 73.880 && lng <= 73.920) ||
+    (road && road.toLowerCase().includes('alandi')) ||
+    (poi && poi.toLowerCase().includes('alandi'));
+
+  if (isNearMitAlandi) {
+    if (!poi || !poi.toLowerCase().includes('mit')) {
+      poi = poi ? `${poi} (MIT Alandi)` : 'MIT Alandi';
+    }
+    localArea = 'Alandi';
+    city = 'Pune';
+  } else if (isAlandiTown) {
+    if (!localArea || localArea.toLowerCase() === 'pimpri-chinchwad') {
+      localArea = 'Alandi';
+      city = 'Pune';
+    }
+  }
+
+  // Build clean prioritized address segments
+  const segments = [];
+
+  if (poi) segments.push(poi);
+  if (road && road !== poi) segments.push(road);
+  if (localArea && !segments.some((s) => s.toLowerCase() === localArea.toLowerCase())) {
+    segments.push(localArea);
+  }
+
+  // Add City if not already present
+  if (city && !segments.some((s) => s.toLowerCase() === city.toLowerCase())) {
+    segments.push(city);
+  }
+
+  // Take top 2-3 most specific segments for clear readable address
+  if (segments.length >= 2) {
+    return segments.slice(0, 3).join(', ');
+  }
+
+  // Fallback to display_name chunks if available
+  if (data.display_name) {
+    const rawParts = data.display_name.split(',').map((s) => s.trim()).filter(Boolean);
+    if (rawParts.length > 0) {
+      return rawParts.slice(0, 3).join(', ');
+    }
+  }
+
+  return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+}
+
 async function reverseGeocode(lat, lng) {
   try {
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=18`,
       { headers: { 'Accept-Language': 'en', 'User-Agent': 'CivicAssist/1.0' } }
     );
     const data = await res.json();
-    const a = data.address || {};
-    const parts = [
-      a.suburb || a.neighbourhood || a.village || a.town || a.city_district,
-      a.city || a.town || a.county,
-      a.state,
-    ].filter(Boolean);
-    return parts.slice(0, 2).join(', ') || data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    return formatAddressFromNominatim(data, lat, lng);
   } catch {
+    // Graceful coordinate vicinity fallback
+    if (lat >= 18.670 && lat <= 18.678 && lng >= 73.885 && lng <= 73.896) {
+      return 'MIT Alandi, Dehu - Alandi Road, Alandi';
+    }
+    if (lat >= 18.665 && lat <= 18.705 && lng >= 73.880 && lng <= 73.920) {
+      return 'Alandi, Pune';
+    }
     return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   }
 }
@@ -373,13 +467,7 @@ export default function ReportIssue() {
   const pickSearchResult = (r) => {
     const lat = parseFloat(r.lat);
     const lng = parseFloat(r.lon);
-    const a = r.address || {};
-    const parts = [
-      a.suburb || a.neighbourhood || a.village || a.town || a.city_district,
-      a.city || a.town || a.county,
-      a.state,
-    ].filter(Boolean);
-    const addr = parts.slice(0, 2).join(', ') || r.display_name;
+    const addr = formatAddressFromNominatim(r, lat, lng);
     setMapCoords([lat, lng]);
     setMapCenter([lat, lng]);
     setMapZoom(16);

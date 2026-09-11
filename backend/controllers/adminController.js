@@ -2,18 +2,44 @@ import { supabase } from '../config/supabase.js';
 import { runAIAnalysis } from '../services/aiRunner.js';
 import { uploadBuffer } from '../config/cloudinary.js';
 
-const MUMBAI_ZONES = [
-  { name: 'Andheri', lat: 19.1364, lng: 72.8296 },
-  { name: 'Bandra', lat: 19.0607, lng: 72.8362 },
-  { name: 'Dadar', lat: 19.0270, lng: 72.8381 },
-  { name: 'Goregaon', lat: 19.1666, lng: 72.8506 },
-  { name: 'Powai', lat: 19.1187, lng: 72.9053 },
-  { name: 'Chembur', lat: 19.0600, lng: 72.8970 },
-  { name: 'Juhu', lat: 19.1075, lng: 72.8263 },
-  { name: 'Kurla', lat: 19.0726, lng: 72.8845 },
-  { name: 'Borivali', lat: 19.2290, lng: 72.8560 },
-  { name: 'Vashi', lat: 19.0696, lng: 72.9987 },
+const MAHARASHTRA_ZONES = [
+  // Pune & Pimpri-Chinchwad Region
+  { name: 'Alandi / MIT Alandi', region: 'Pune', lat: 18.6750, lng: 73.8920 },
+  { name: 'Pimpri-Chinchwad', region: 'Pune', lat: 18.6298, lng: 73.7997 },
+  { name: 'Pune Central', region: 'Pune', lat: 18.5314, lng: 73.8446 },
+  { name: 'Kothrud', region: 'Pune', lat: 18.5074, lng: 73.8077 },
+  { name: 'Hinjawadi', region: 'Pune', lat: 18.5913, lng: 73.7389 },
+  { name: 'Viman Nagar', region: 'Pune', lat: 18.5679, lng: 73.9143 },
+  { name: 'Hadapsar', region: 'Pune', lat: 18.5089, lng: 73.9259 },
+  { name: 'Baner / Wakad', region: 'Pune', lat: 18.5750, lng: 73.7750 },
+  { name: 'Swargate', region: 'Pune', lat: 18.5000, lng: 73.8580 },
+
+  // Mumbai & MMR Region
+  { name: 'Andheri', region: 'Mumbai', lat: 19.1364, lng: 72.8296 },
+  { name: 'Bandra', region: 'Mumbai', lat: 19.0607, lng: 72.8362 },
+  { name: 'Dadar', region: 'Mumbai', lat: 19.0270, lng: 72.8381 },
+  { name: 'Goregaon', region: 'Mumbai', lat: 19.1666, lng: 72.8506 },
+  { name: 'Powai', region: 'Mumbai', lat: 19.1187, lng: 72.9053 },
+  { name: 'Chembur', region: 'Mumbai', lat: 19.0600, lng: 72.8970 },
+  { name: 'Juhu', region: 'Mumbai', lat: 19.1075, lng: 72.8263 },
+  { name: 'Kurla', region: 'Mumbai', lat: 19.0726, lng: 72.8845 },
+  { name: 'Borivali', region: 'Mumbai', lat: 19.2290, lng: 72.8560 },
+  { name: 'Vashi', region: 'Mumbai', lat: 19.0696, lng: 72.9987 },
+  { name: 'Thane', region: 'Mumbai', lat: 19.2183, lng: 72.9781 },
+  { name: 'Dharavi', region: 'Mumbai', lat: 19.0390, lng: 72.8542 },
+  { name: 'Mankhurd', region: 'Mumbai', lat: 19.0470, lng: 72.9280 },
+  { name: 'Ghatkopar', region: 'Mumbai', lat: 19.0862, lng: 72.9088 },
+  { name: 'Malad', region: 'Mumbai', lat: 19.1872, lng: 72.8483 },
+  { name: 'Vikhroli', region: 'Mumbai', lat: 19.1100, lng: 72.9200 },
+  { name: 'Colaba', region: 'Mumbai', lat: 18.9068, lng: 72.8147 },
+
+  // Rest of Maharashtra
+  { name: 'Nashik', region: 'Maharashtra', lat: 19.9975, lng: 73.7898 },
+  { name: 'Nagpur', region: 'Maharashtra', lat: 21.1458, lng: 79.0882 },
+  { name: 'Chhatrapati Sambhajinagar', region: 'Maharashtra', lat: 19.8762, lng: 75.3433 },
 ];
+
+const MUMBAI_ZONES = MAHARASHTRA_ZONES;
 
 const OFFICER_COLORS = ['#2563eb', '#7c3aed', '#059669', '#d97706', '#0891b2', '#ef4444'];
 
@@ -38,17 +64,56 @@ function haversineKm(a, b) {
 }
 
 function bestZoneForIssue(issue) {
-  const lat = Number(issue?.coordinates?.lat);
-  const lng = Number(issue?.coordinates?.lng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  let lat = Number(issue?.coordinates?.lat);
+  let lng = Number(issue?.coordinates?.lng);
 
-  let best = null;
-  for (const z of MUMBAI_ZONES) {
-    const d = haversineKm({ lat, lng }, z);
-    if (!best || d < best.distanceKm) best = { ...z, distanceKm: d };
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    const loc = (issue?.location || '').toLowerCase();
+    if (loc.includes('alandi') || loc.includes('mit')) {
+      lat = 18.6750; lng = 73.8920;
+    } else if (loc.includes('pimpri') || loc.includes('chinchwad') || loc.includes('pcmc')) {
+      lat = 18.6298; lng = 73.7997;
+    } else if (loc.includes('pune') || loc.includes('kothrud') || loc.includes('shivaji') || loc.includes('swargate')) {
+      lat = 18.5314; lng = 73.8446;
+    } else if (loc.includes('hinjawadi') || loc.includes('hinjewadi')) {
+      lat = 18.5913; lng = 73.7389;
+    } else if (loc.includes('andheri')) {
+      lat = 19.1364; lng = 72.8296;
+    } else if (loc.includes('bandra')) {
+      lat = 19.0607; lng = 72.8362;
+    } else if (loc.includes('mumbai')) {
+      lat = 19.0760; lng = 72.8777;
+    }
   }
-  if (!best || best.distanceKm > 25) return null;
-  return best.name;
+
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    // Exact vicinity check for Alandi / MIT Alandi
+    if (lat >= 18.665 && lat <= 18.705 && lng >= 73.880 && lng <= 73.920) {
+      return { name: 'Alandi / MIT Alandi', lat: 18.6750, lng: 73.8920, region: 'Pune' };
+    }
+
+    let best = null;
+    for (const z of MAHARASHTRA_ZONES) {
+      const d = haversineKm({ lat, lng }, z);
+      if (!best || d < best.distanceKm) best = { ...z, distanceKm: d };
+    }
+    if (best && best.distanceKm <= 35) {
+      return { name: best.name, lat: best.lat, lng: best.lng, region: best.region };
+    }
+    const locName = issue?.location?.split(',')[0]?.trim() || 'Maharashtra Zone';
+    return { name: locName, lat, lng, region: 'Maharashtra' };
+  }
+
+  if (issue?.location) {
+    const loc = issue.location.toLowerCase();
+    if (loc.includes('alandi') || loc.includes('mit')) return { name: 'Alandi / MIT Alandi', lat: 18.6750, lng: 73.8920, region: 'Pune' };
+    if (loc.includes('pimpri') || loc.includes('chinchwad')) return { name: 'Pimpri-Chinchwad', lat: 18.6298, lng: 73.7997, region: 'Pune' };
+    if (loc.includes('pune')) return { name: 'Pune Central', lat: 18.5314, lng: 73.8446, region: 'Pune' };
+    const locName = issue.location.split(',')[0]?.trim();
+    if (locName) return { name: locName, lat: 19.0760, lng: 72.8777, region: 'Maharashtra' };
+  }
+
+  return null;
 }
 
 function getPriority(likes) {
@@ -113,6 +178,13 @@ function formatAdminIssue(issue) {
   const authenticity = aiAnalysis.authenticity || 'unknown';
   const aiBadge = authenticity === 'fake' ? 'Fake (Spam)' : authenticity === 'real' ? 'Real' : authenticity === 'scanning' ? 'Scanning...' : 'Unknown';
   const proof = extractResolutionProof(issue);
+  let coords = issue.coordinates || null;
+  if ((!coords || !coords.lat || !coords.lng) && issue.location) {
+    const zone = bestZoneForIssue(issue);
+    if (zone?.lat && zone?.lng) {
+      coords = { lat: zone.lat, lng: zone.lng };
+    }
+  }
   return {
     id: issue.complaint_id || issue.complaintId || `#${String(issue.id).slice(-4).toUpperCase()}`,
     _id: String(issue.id),
@@ -128,6 +200,7 @@ function formatAdminIssue(issue) {
     reporter: issue.reporter?.name || 'Anonymous',
     phone: issue.reporter?.phone || 'N/A',
     location: issue.location,
+    coordinates: coords,
     image: issue.image_url || issue.imageUrl || '',
     description: issue.description,
     assignedTo: issue.assigned_to ?? issue.assignedTo ?? null,
@@ -533,14 +606,34 @@ export async function getAdminAnalysis(req, res) {
 
     const peakCategory = categoryBreakdown[0]?.category || 'N/A';
 
-    const zoneAgg = new Map(MUMBAI_ZONES.map(z => [z.name, { name: z.name, lat: z.lat, lng: z.lng, issues: 0, resolved: 0, top: 'N/A' }]));
-    const zoneCatCounts = new Map(MUMBAI_ZONES.map(z => [z.name, new Map()]));
+    const zoneAgg = new Map(MAHARASHTRA_ZONES.map(z => [z.name, {
+      name: z.name,
+      region: z.region,
+      lat: z.lat,
+      lng: z.lng,
+      issues: 0,
+      resolved: 0,
+      top: 'N/A'
+    }]));
+    const zoneCatCounts = new Map(MAHARASHTRA_ZONES.map(z => [z.name, new Map()]));
 
     for (const it of issues) {
-      const zoneName = bestZoneForIssue(it);
-      if (!zoneName) continue;
+      const zInfo = bestZoneForIssue(it);
+      if (!zInfo) continue;
+      const zoneName = zInfo.name;
+      if (!zoneAgg.has(zoneName)) {
+        zoneAgg.set(zoneName, {
+          name: zoneName,
+          region: zInfo.region || 'Maharashtra',
+          lat: zInfo.lat,
+          lng: zInfo.lng,
+          issues: 0,
+          resolved: 0,
+          top: 'N/A'
+        });
+        zoneCatCounts.set(zoneName, new Map());
+      }
       const z = zoneAgg.get(zoneName);
-      if (!z) continue;
       z.issues += 1;
       if (it.status === 'resolved') z.resolved += 1;
       const cMap = zoneCatCounts.get(zoneName);

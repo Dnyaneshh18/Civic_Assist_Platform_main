@@ -1,8 +1,45 @@
 import { useState, useRef, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import L from 'leaflet';
 import { useApp } from '../context/AppContext';
 import AdminSidebar from './AdminSidebar';
 import MumbaiMap, { HOTSPOTS, getColor, getLabel } from './MumbaiMap';
 import { api } from '../lib/api';
+
+const ADMIN_PIN_ICON = L.divIcon({
+  className: '',
+  html: `<div style="position:relative;width:40px;height:52px;">
+    <div style="
+      position:absolute;left:50%;top:2px;width:34px;height:34px;
+      transform:translateX(-50%) rotate(-45deg);
+      transform-origin:center;
+      background:linear-gradient(135deg,#ef4444,#b91c1c);
+      border:3px solid white;
+      border-radius:50% 50% 50% 0;
+      box-shadow:0 12px 28px rgba(220,38,38,0.5),0 0 0 8px rgba(220,38,38,0.18);
+    "></div>
+    <div style="
+      position:absolute;left:50%;top:14px;width:10px;height:10px;
+      transform:translateX(-50%);
+      border-radius:9999px;background:white;
+      box-shadow:0 2px 4px rgba(0,0,0,0.3);
+    "></div>
+  </div>`,
+  iconSize: [40, 52],
+  iconAnchor: [20, 48],
+  popupAnchor: [0, -48],
+});
+
+function PinpointMapController({ center }) {
+  const map = useMap();
+  useEffect(() => {
+    if (map && center && Number.isFinite(center[0]) && Number.isFinite(center[1])) {
+      map.setView(center, 17);
+      map.invalidateSize();
+    }
+  }, [map, center]);
+  return null;
+}
 
 const DEPT_MAP = {
   garbage:     { dept: 'Solid Waste Management', head: 'Ms. Asha Kulkarni', phone: '9820011101', icon: 'fa-trash', color: '#059669' },
@@ -122,6 +159,43 @@ function ComplaintDetail({
   const isSpam = !!complaint.aiAnalysis?.isSpam;
   const isScanning = complaint.aiAnalysis?.authenticity === 'scanning';
   const hasAI = !isScanning && complaint.aiAnalysis && typeof complaint.aiAnalysis.finalScore === 'number';
+
+  // Precision Pinpoint Coordinates & On-Site Navigation setup
+  const rawLat = Number(complaint.coordinates?.lat);
+  const rawLng = Number(complaint.coordinates?.lng);
+  let lat = Number.isFinite(rawLat) ? rawLat : null;
+  let lng = Number.isFinite(rawLng) ? rawLng : null;
+
+  if (!lat || !lng) {
+    const locLower = (complaint.location || '').toLowerCase();
+    if (locLower.includes('alandi') || locLower.includes('mit')) {
+      lat = 18.6750; lng = 73.8920;
+    } else if (locLower.includes('pimpri') || locLower.includes('chinchwad') || locLower.includes('pcmc')) {
+      lat = 18.6298; lng = 73.7997;
+    } else if (locLower.includes('pune')) {
+      lat = 18.5314; lng = 73.8446;
+    } else if (locLower.includes('andheri')) {
+      lat = 19.1364; lng = 72.8296;
+    } else if (locLower.includes('bandra')) {
+      lat = 19.0607; lng = 72.8362;
+    } else if (locLower.includes('dharavi')) {
+      lat = 19.0390; lng = 72.8542;
+    } else if (locLower.includes('kurla')) {
+      lat = 19.0726; lng = 72.8845;
+    } else if (locLower.includes('mumbai')) {
+      lat = 19.0760; lng = 72.8777;
+    } else {
+      lat = 18.6750; lng = 73.8920;
+    }
+  }
+
+  const mapCenter = [lat, lng];
+  const googleMapsNavUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  const googleMapsViewUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+  const osmUrl = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=18/${lat}/${lng}`;
+
+  const [copiedCoords, setCopiedCoords] = useState(false);
+  const [mapModalOpen, setMapModalOpen] = useState(false);
 
   const [lightboxImage, setLightboxImage] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
@@ -255,9 +329,18 @@ function ComplaintDetail({
             </span>
           </div>
           <h1 className="text-2xl font-black text-white leading-tight drop-shadow-lg">{complaint.title}</h1>
-          <div className="flex flex-wrap items-center gap-4 mt-1.5 text-xs text-white/75">
-            <span className="flex items-center gap-1.5"><i className="fas fa-location-dot text-blue-300" />{complaint.location}</span>
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4 mt-2 text-xs text-white/85">
+            <span className="flex items-center gap-1.5 font-medium"><i className="fas fa-location-dot text-rose-400" />{complaint.location}</span>
             <span className="flex items-center gap-1.5"><i className="fas fa-clock text-blue-300" />{complaint.submittedAt}</span>
+            <a
+              href={googleMapsNavUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black shadow-lg shadow-emerald-950/40 transition hover:scale-105 active:scale-95"
+            >
+              <i className="fas fa-diamond-turn-right text-xs" />
+              <span>Navigate to Site (Google Maps)</span>
+            </a>
           </div>
           {complaint.image && (
             <button onClick={() => setLightboxImage(complaint.image)}
@@ -490,8 +573,137 @@ function ComplaintDetail({
       {/* ── Main Grid ── */}
       <div className="grid items-start gap-5 xl:grid-cols-2">
 
-        {/* LEFT — Description + AI Analysis */}
+        {/* LEFT — Pinpoint Map + Description + AI Analysis */}
         <div className="space-y-4">
+
+          {/* ── On-Site Pinpoint Inspection Map & Field Navigation ── */}
+          <section className={`rounded-3xl border overflow-hidden shadow-md transition-all ${card(dark)}`}>
+            {/* Card Header */}
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-rose-500/15 text-rose-600 dark:text-rose-400">
+                  <i className="fas fa-location-crosshairs text-base" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className={`text-sm font-black ${dark ? 'text-white' : 'text-slate-900'}`}>
+                      Pinpoint Location & Field Navigation
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+                      GPS Pinpoint
+                    </span>
+                  </div>
+                  <p className={`text-[11px] font-mono mt-0.5 ${dark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {lat.toFixed(6)}° N, {lng.toFixed(6)}° E
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+                    setCopiedCoords(true);
+                    setTimeout(() => setCopiedCoords(false), 2000);
+                  }}
+                  title="Copy GPS coordinates"
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border transition flex items-center gap-1.5 ${
+                    copiedCoords
+                      ? 'bg-emerald-500 text-white border-emerald-500'
+                      : dark
+                        ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <i className={`fas ${copiedCoords ? 'fa-check' : 'fa-copy'}`} />
+                  <span>{copiedCoords ? 'Copied!' : 'Copy GPS'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMapModalOpen(true)}
+                  title="Expand full inspection map"
+                  className={`w-8 h-8 rounded-xl flex items-center justify-center border transition ${
+                    dark ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <i className="fas fa-expand text-xs" />
+                </button>
+              </div>
+            </div>
+
+            {/* Interactive Map Container */}
+            <div className="relative h-72 w-full bg-slate-100 dark:bg-slate-800">
+              <MapContainer
+                center={mapCenter}
+                zoom={17}
+                style={{ width: '100%', height: '100%' }}
+                zoomControl={true}
+                scrollWheelZoom={false}
+              >
+                <TileLayer
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  maxZoom={19}
+                />
+                <Marker position={mapCenter} icon={ADMIN_PIN_ICON} />
+                <PinpointMapController center={mapCenter} />
+              </MapContainer>
+
+              {/* Floating Address Pill on Map */}
+              <div className="absolute left-3 top-3 z-[400] max-w-[85%] sm:max-w-xs rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-3.5 py-2.5 shadow-lg border border-slate-200/80 dark:border-slate-700/80">
+                <div className="flex items-start gap-2">
+                  <i className="fas fa-map-pin text-rose-500 mt-0.5 text-xs flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">Exact Incident Spot</p>
+                    <p className={`text-xs font-bold leading-snug line-clamp-2 mt-0.5 ${dark ? 'text-white' : 'text-slate-900'}`}>
+                      {complaint.location || 'Reported Location'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Field Navigation Action Bar */}
+            <div className="p-4 sm:p-5 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <a
+                  href={googleMapsNavUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black shadow-md shadow-emerald-600/20 transition-all active:scale-95"
+                >
+                  <i className="fas fa-diamond-turn-right text-sm" />
+                  <span>Start Turn-by-Turn GPS Navigation</span>
+                </a>
+
+                <a
+                  href={googleMapsViewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-xs font-bold border transition-all active:scale-95 ${
+                    dark
+                      ? 'border-slate-700 bg-slate-800 text-blue-400 hover:bg-slate-700'
+                      : 'border-slate-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                  }`}
+                >
+                  <i className="fab fa-google text-sm" />
+                  <span>Open in Google Maps</span>
+                </a>
+              </div>
+
+              {/* Dispatch / Field Crew Note */}
+              <div className={`p-3 rounded-xl border flex items-start gap-2.5 text-[11px] leading-relaxed ${
+                dark ? 'bg-slate-800/60 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200/80 text-slate-600'
+              }`}>
+                <i className="fas fa-circle-info text-blue-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">Field Crew Guidance: </span>
+                  Municipal inspection and maintenance officers can open this GPS navigation directly to reach the exact physical site without confusion.
+                </div>
+              </div>
+            </div>
+          </section>
 
           {/* Description */}
           <div className={`rounded-2xl border p-5 shadow-sm ${card(dark)}`}>
@@ -1111,6 +1323,101 @@ function ComplaintDetail({
           </div>
         </div>
       )}
+      {/* ── High-Precision Fullscreen Map Modal ── */}
+      {mapModalOpen && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 p-3 sm:p-6 backdrop-blur-sm animate-fadeIn"
+          onClick={() => setMapModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className={`w-full max-w-5xl h-[85vh] rounded-3xl overflow-hidden flex flex-col shadow-2xl border ${
+              dark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-rose-500/15 text-rose-500">
+                  <i className="fas fa-map-location-dot text-base" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black leading-tight">High-Precision Field Map</h3>
+                  <p className={`text-xs mt-0.5 ${dark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {complaint.location} · <span className="font-mono font-bold text-rose-500">{lat.toFixed(6)}° N, {lng.toFixed(6)}° E</span>
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={googleMapsNavUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-md transition active:scale-95"
+                >
+                  <i className="fas fa-diamond-turn-right text-xs" />
+                  <span>Start GPS Navigation</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setMapModalOpen(false)}
+                  className="w-10 h-10 rounded-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition"
+                >
+                  <i className="fas fa-xmark text-base" />
+                </button>
+              </div>
+            </div>
+
+            {/* Map View */}
+            <div className="flex-1 relative w-full">
+              <MapContainer
+                center={mapCenter}
+                zoom={18}
+                style={{ width: '100%', height: '100%' }}
+                zoomControl={true}
+              >
+                <TileLayer
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  maxZoom={19}
+                />
+                <Marker position={mapCenter} icon={ADMIN_PIN_ICON} />
+                <PinpointMapController center={mapCenter} />
+              </MapContainer>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-950">
+              <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                <i className="fas fa-location-crosshairs text-rose-500" />
+                <span>Precise GPS: <b className="font-mono text-slate-800 dark:text-slate-200">{lat.toFixed(6)}, {lng.toFixed(6)}</b></span>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={googleMapsNavUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow transition active:scale-95"
+                >
+                  <i className="fas fa-diamond-turn-right mr-1.5" /> Start Navigation
+                </a>
+                <a
+                  href={osmUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`px-3 py-2 rounded-xl text-xs font-bold border transition ${
+                    dark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-700'
+                  }`}
+                >
+                  Open in OpenStreetMap
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1355,8 +1662,8 @@ export default function AdminDashboard() {
                   <span>Department Directory: {adminDept} · BMC Region</span>
                 ) : (
                   <>
-                    <span className="sm:hidden">BMC · Mumbai</span>
-                    <span className="hidden sm:inline">Brihanmumbai Municipal Corporation (BMC) · Mumbai Region</span>
+                    <span className="sm:hidden">Govt of Maharashtra</span>
+                    <span className="hidden sm:inline">Maharashtra Civic Administration · Mumbai & Pune Regions</span>
                   </>
                 )}
               </p>
@@ -1911,6 +2218,12 @@ function ComplaintsTab({ dark, complaints, onSelect, isDeptHead, adminDept, admi
                   <span className="hidden sm:flex items-center gap-1.5">
                     <i className="fas fa-location-dot text-[9px]" />{c.location?.split(',').slice(0, 2).join(',')}
                   </span>
+                  {c.coordinates?.lat && c.coordinates?.lng && (
+                    <span className="hidden md:inline-flex items-center gap-1 text-[9px] font-mono px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60">
+                      <i className="fas fa-location-crosshairs text-[8px]" />
+                      {Number(c.coordinates.lat).toFixed(4)}, {Number(c.coordinates.lng).toFixed(4)}
+                    </span>
+                  )}
                   <span className="flex items-center gap-1.5">
                     <i className="fas fa-clock text-[9px]" />{c.date}
                   </span>
@@ -1996,12 +2309,14 @@ function AnalysisTab({ dark, analysisData, complaints, onSelectComplaint }) {
   const catBreakdown = analysisData?.categoryBreakdown ?? [];
   const catTotal = catBreakdown.reduce((s, c) => s + c.count, 0) || 1;
 
-  const hotspots = HOTSPOTS;
+  const hotspots = (analysisData?.hotspots && analysisData.hotspots.length > 0)
+    ? analysisData.hotspots
+    : HOTSPOTS;
   const sortedHotspots = [...hotspots].sort((a, b) => b.issues - a.issues);
   const actionQueue = analysisData?.actionQueue ?? [];
 
   const INSIGHTS = [
-    { icon: 'fa-triangle-exclamation', color: '#ef4444', bg: '#fef2f2', title: 'Critical Hotspot', desc: 'Andheri & Goregaon show the highest open issues today. Prioritize streetlights and potholes on major corridors.' },
+    { icon: 'fa-triangle-exclamation', color: '#ef4444', bg: '#fef2f2', title: 'Critical Hotspot', desc: 'Pimpri-Chinchwad & Andheri show the highest open issues. Prioritize garbage clearance and road repairs on major corridors.' },
     { icon: 'fa-stopwatch', color: '#2563eb', bg: '#eff6ff', title: 'Avg Resolution Time', desc: 'Track delays by zone: pending >48h should be escalated automatically to department heads.' },
     { icon: 'fa-trash', color: '#059669', bg: '#ecfdf5', title: 'Top Category — Garbage', desc: 'Garbage and sanitation reports spike near markets and transit hubs. Schedule additional pickups and audits.' },
     { icon: 'fa-road', color: '#7c3aed', bg: '#f5f3ff', title: 'Pothole Season Alert', desc: 'Monsoon increases road complaints. Create a weekly “fast repair” queue for the worst segments.' },
@@ -2013,12 +2328,12 @@ function AnalysisTab({ dark, analysisData, complaints, onSelectComplaint }) {
     <div className={`rounded-2xl border shadow-sm overflow-hidden ${card(dark)}`}>
       <div className={`flex items-center justify-between px-6 py-4 border-b ${dark ? 'border-slate-700' : 'border-slate-100'}`}>
         <div>
-          <h3 className={`text-sm font-black ${dark ? 'text-white' : 'text-slate-900'}`}>Mumbai Complaint Heatmap</h3>
-          <p className={`text-xs mt-0.5 ${dark ? 'text-slate-400' : 'text-slate-400'}`}>Live issue density by area — scroll to zoom, hover for details</p>
+          <h3 className={`text-sm font-black ${dark ? 'text-white' : 'text-slate-900'}`}>Maharashtra Civic Heatmap</h3>
+          <p className={`text-xs mt-0.5 ${dark ? 'text-slate-400' : 'text-slate-400'}`}>Live issue density across Mumbai, Pune & PCMC — scroll to zoom, click region pills to jump</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold" style={{ background: '#eff6ff', color: '#2563eb' }}>
-            <i className="fas fa-location-dot text-[10px]" />Mumbai, MH
+            <i className="fas fa-location-dot text-[10px]" />Maharashtra, IN
           </div>
         </div>
       </div>
@@ -2037,21 +2352,25 @@ function AnalysisTab({ dark, analysisData, complaints, onSelectComplaint }) {
       <div className={`flex items-center justify-between px-6 py-4 border-b ${dark ? 'border-slate-700' : 'border-slate-100'}`}>
         <div>
           <h3 className={`text-sm font-black ${dark ? 'text-white' : 'text-slate-900'}`}>Area-wise Issue Ranking</h3>
-          <p className={`text-xs mt-0.5 ${dark ? 'text-slate-400' : 'text-slate-400'}`}>All zones ranked by open complaints</p>
+          <p className={`text-xs mt-0.5 ${dark ? 'text-slate-400' : 'text-slate-400'}`}>All Maharashtra zones ranked by open complaints</p>
         </div>
         <span className={`text-xs font-bold px-3 py-1 rounded-xl ${dark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>{sortedHotspots.length} zones</span>
       </div>
       <div className={`divide-y ${dark ? 'divide-slate-800' : 'divide-slate-50'}`}>
         {sortedHotspots.map((spot, i) => {
-          const color = getColor(spot.issues);
-          const label = getLabel(spot.issues);
-          const resolvePct = Math.round((spot.resolved / spot.issues) * 100);
+          const maxIssues = Math.max(...sortedHotspots.map(s => s.issues), 1);
+          const color = getColor(spot.issues, maxIssues);
+          const label = getLabel(spot.issues, maxIssues);
+          const resolvePct = spot.issues > 0 ? Math.round((spot.resolved / spot.issues) * 100) : 0;
           return (
             <div key={spot.name} className={`flex items-center gap-4 px-6 py-3.5 transition-colors ${dark ? 'hover:bg-slate-800' : 'hover:bg-slate-50'}`}>
               <span className={`text-xs font-black w-6 text-center ${i === 0 ? 'text-red-500' : i === 1 ? 'text-orange-500' : dark ? 'text-slate-500' : 'text-slate-300'}`}>#{i + 1}</span>
               <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: color }} />
               <div className="flex-1 min-w-0">
                 <span className={`text-sm font-bold ${dark ? 'text-slate-200' : 'text-slate-800'}`}>{spot.name}</span>
+                {spot.region && (
+                  <span className={`ml-2 text-[10px] font-extrabold px-1.5 py-0.5 rounded ${dark ? 'bg-slate-800 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>{spot.region}</span>
+                )}
                 <span className={`ml-2 text-[10px] font-semibold ${dark ? 'text-slate-500' : 'text-slate-400'}`}>Top: {spot.top}</span>
               </div>
               <div className="flex items-center gap-3">

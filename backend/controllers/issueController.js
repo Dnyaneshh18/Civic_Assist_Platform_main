@@ -85,6 +85,38 @@ export async function createIssue(req, res) {
 
     const complaintId = `#C${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
+    let coords = (lat && lng) ? { lat: parseFloat(lat), lng: parseFloat(lng) } : null;
+    if (!coords && location) {
+      const loc = location.toLowerCase();
+      if (loc.includes('alandi') || loc.includes('mit')) {
+        coords = { lat: 18.6750, lng: 73.8920 };
+      } else if (loc.includes('pimpri') || loc.includes('chinchwad') || loc.includes('pcmc') || loc.includes('akurdi') || loc.includes('nigdi') || loc.includes('bhosari')) {
+        coords = { lat: 18.6298, lng: 73.7997 };
+      } else if (loc.includes('pune') || loc.includes('kothrud') || loc.includes('shivaji') || loc.includes('swargate')) {
+        coords = { lat: 18.5314, lng: 73.8446 };
+      } else if (loc.includes('hinjawadi') || loc.includes('hinjewadi')) {
+        coords = { lat: 18.5913, lng: 73.7389 };
+      } else if (loc.includes('viman nagar')) {
+        coords = { lat: 18.5679, lng: 73.9143 };
+      } else if (loc.includes('hadapsar') || loc.includes('magarpatta')) {
+        coords = { lat: 18.5089, lng: 73.9259 };
+      } else if (loc.includes('baner') || loc.includes('wakad')) {
+        coords = { lat: 18.5750, lng: 73.7750 };
+      } else if (loc.includes('andheri')) {
+        coords = { lat: 19.1364, lng: 72.8296 };
+      } else if (loc.includes('bandra')) {
+        coords = { lat: 19.0607, lng: 72.8362 };
+      } else if (loc.includes('dadar')) {
+        coords = { lat: 19.0270, lng: 72.8381 };
+      } else if (loc.includes('thane')) {
+        coords = { lat: 19.2183, lng: 72.9781 };
+      } else if (loc.includes('vashi') || loc.includes('navi mumbai')) {
+        coords = { lat: 19.0696, lng: 72.9987 };
+      } else if (loc.includes('mumbai')) {
+        coords = { lat: 19.0760, lng: 72.8777 };
+      }
+    }
+
     const { data: issue, error: insertError } = await supabase
       .from('issues')
       .insert({
@@ -93,7 +125,7 @@ export async function createIssue(req, res) {
         description: description.trim(),
         category,
         location: location.trim(),
-        coordinates: lat && lng ? { lat: parseFloat(lat), lng: parseFloat(lng) } : null,
+        coordinates: coords,
         image_url: '',
         reporter: {
           userId: req.user.userId,
