@@ -25,7 +25,9 @@ const STATUS_LABELS = {
   open: { en: 'Open', hi: 'खुला', mr: 'खुली' },
   pending: { en: 'Pending', hi: 'लंबित', mr: 'प्रलंबित' },
   inprogress: { en: 'In Progress', hi: 'प्रगति में', mr: 'काम सुरू' },
+  under_review: { en: 'Under Review', hi: 'समीक्षाधीन', mr: 'पुनरावलोकनाधीन' },
   resolved: { en: 'Resolved', hi: 'सुलझा', mr: 'निकाली' },
+  rejected: { en: 'Rejected (Fake / Spam)', hi: 'अस्वीकृत (फ़र्ज़ी / स्पैम)', mr: 'नाकारले (बनावट / स्पॅम)' },
   unread: { en: 'Unread', hi: 'अपठित', mr: 'न वाचलेले' },
 };
 

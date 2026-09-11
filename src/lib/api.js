@@ -161,5 +161,20 @@ export const api = {
       body: JSON.stringify({ reason }),
     }));
   },
+
+  async dismissSpamIssue(issueId, reason = '') {
+    return handle(await fetch(`${BASE}/admin/issues/${issueId}/dismiss`, {
+      method: 'POST',
+      headers: adminHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ reason }),
+    }));
+  },
+
+  async overrideSpamIssue(issueId) {
+    return handle(await fetch(`${BASE}/admin/issues/${issueId}/override`, {
+      method: 'POST',
+      headers: adminHeaders(),
+    }));
+  },
 };
 

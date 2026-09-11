@@ -159,7 +159,7 @@ export async function createIssue(req, res) {
             .update({
               ai_analysis: aiResult,
               timeline,
-              ...(aiResult.isSpam && { assigned_to: 'Spam Queue' }),
+              ...(aiResult.isSpam && { assigned_to: 'Spam Queue', status: 'rejected' }),
             })
             .eq('id', issueId);
 

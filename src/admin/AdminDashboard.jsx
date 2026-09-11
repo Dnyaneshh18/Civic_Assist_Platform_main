@@ -32,8 +32,10 @@ function statusCls(status, dark) {
     'In Progress':  dark ? 'bg-blue-900/40 text-blue-300 border-blue-700'        : 'bg-blue-50 text-blue-700 border-blue-200',
     'Under Review': dark ? 'bg-purple-900/40 text-purple-300 border-purple-700'  : 'bg-purple-50 text-purple-700 border-purple-200',
     Resolved:       dark ? 'bg-green-900/40 text-green-300 border-green-700'    : 'bg-green-50 text-green-700 border-green-200',
+    Rejected:       dark ? 'bg-red-900/40 text-red-300 border-red-700'          : 'bg-red-50 text-red-700 border-red-200',
+    'Rejected (Spam)': dark ? 'bg-red-900/40 text-red-300 border-red-700'      : 'bg-red-50 text-red-700 border-red-200',
   };
-  return map[status] || '';
+  return map[status] || (dark ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-slate-100 text-slate-600 border-slate-200');
 }
 
 function card(dark) {
@@ -109,6 +111,8 @@ function ComplaintDetail({
   onSubmitProof,
   onApproveResolution,
   onRejectResolution,
+  onDismissSpam,
+  onOverrideSpam,
   isDeptHead,
   adminDept,
   adminName,
@@ -138,6 +142,8 @@ function ComplaintDetail({
     'In Progress':  { pill: 'bg-blue-100 text-blue-700',        dot: '#2563eb' },
     'Under Review': { pill: 'bg-purple-100 text-purple-700',    dot: '#8b5cf6' },
     Resolved:       { pill: 'bg-emerald-100 text-emerald-700',  dot: '#059669' },
+    Rejected:       { pill: 'bg-red-100 text-red-700',          dot: '#dc2626' },
+    'Rejected (Spam)': { pill: 'bg-red-100 text-red-700',      dot: '#dc2626' },
   };
 
   const askConfirm = (action) => setConfirmAction(action);
@@ -602,54 +608,81 @@ function ComplaintDetail({
                 <p className="font-medium opacity-80">The image uploaded does not match the reported category or description. This complaint has been queued for review.</p>
               </div>
 
-              <div className="space-y-2.5">
-                <p className={`text-[10px] font-black uppercase tracking-widest ${dark ? 'text-slate-500' : 'text-slate-400'}`}>Investigator Actions</p>
-                <button
-                  onClick={() => askConfirm({
-                    title: 'Re-run AI Scan?',
-                    message: 'Re-analyze this complaint. If it passes, it will be cleared from spam.',
-                    confirmText: 'Run Scan',
-                    icon: 'fa-rotate-right',
-                    color: '#2563eb',
-                    onConfirm: () => onReanalyze(complaint._id),
-                  })}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-black transition-all active:scale-95 border ${
-                    dark ? 'border-blue-700 bg-blue-900/20 text-blue-300 hover:bg-blue-900/40' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                  }`}
-                >
-                  <i className="fas fa-rotate-right" />Re-run AI Verification
-                </button>
-                <button
-                  onClick={() => askConfirm({
-                    title: 'Override — Mark as Genuine?',
-                    message: 'You are manually overriding the AI decision. This will clear the spam flag and allow the complaint to be processed.',
-                    confirmText: 'Override & Clear',
-                    icon: 'fa-user-shield',
-                    color: '#059669',
-                    onConfirm: () => onStatusChange(complaint._id, 'pending'),
-                  })}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-black transition-all active:scale-95 border ${
-                    dark ? 'border-emerald-700 bg-emerald-900/20 text-emerald-300 hover:bg-emerald-900/40' : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                  }`}
-                >
-                  <i className="fas fa-user-shield" />Admin Override — Mark as Genuine
-                </button>
-                <button
-                  onClick={() => askConfirm({
-                    title: 'Dismiss & Close?',
-                    message: 'Mark this complaint as resolved / closed without processing.',
-                    confirmText: 'Dismiss Complaint',
-                    icon: 'fa-ban',
-                    color: '#dc2626',
-                    onConfirm: () => onStatusChange(complaint._id, 'Resolved'),
-                  })}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-black transition-all active:scale-95 border ${
-                    dark ? 'border-red-800 bg-red-900/20 text-red-300 hover:bg-red-900/40' : 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100'
-                  }`}
-                >
-                  <i className="fas fa-ban" />Dismiss Spam Complaint
-                </button>
-              </div>
+              {complaint.status === 'Rejected' ? (
+                <div className={`rounded-xl p-4 border flex items-start gap-3 ${dark ? 'bg-red-950/40 border-red-700/60 text-red-200' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                  <div className="w-8 h-8 rounded-xl bg-red-500/20 text-red-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <i className="fas fa-ban text-sm" />
+                  </div>
+                  <div>
+                    <h5 className="font-black text-xs">Complaint Dismissed & Rejected as Spam</h5>
+                    <p className="text-[11px] mt-1 leading-relaxed opacity-90">
+                      This complaint was officially dismissed and rejected by Mumbai Central Administrator. The citizen who posted this report now sees it marked as "Rejected (Fake / Spam)" on their dashboard.
+                    </p>
+                    <button
+                      onClick={() => askConfirm({
+                        title: 'Restore / Override to Genuine?',
+                        message: 'Reopen this complaint and move it to the active queue as a legitimate issue?',
+                        confirmText: 'Restore to Active',
+                        icon: 'fa-rotate-left',
+                        color: '#059669',
+                        onConfirm: () => onOverrideSpam(complaint._id),
+                      })}
+                      className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
+                    >
+                      <i className="fas fa-rotate-left" /> Re-open / Mark as Genuine
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  <p className={`text-[10px] font-black uppercase tracking-widest ${dark ? 'text-slate-500' : 'text-slate-400'}`}>Investigator Actions</p>
+                  <button
+                    onClick={() => askConfirm({
+                      title: 'Re-run AI Scan?',
+                      message: 'Re-analyze this complaint. If it passes, it will be cleared from spam.',
+                      confirmText: 'Run Scan',
+                      icon: 'fa-rotate-right',
+                      color: '#2563eb',
+                      onConfirm: () => onReanalyze(complaint._id),
+                    })}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-black transition-all active:scale-95 border ${
+                      dark ? 'border-blue-700 bg-blue-900/20 text-blue-300 hover:bg-blue-900/40' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                    }`}
+                  >
+                    <i className="fas fa-rotate-right" />Re-run AI Verification
+                  </button>
+                  <button
+                    onClick={() => askConfirm({
+                      title: 'Override — Mark as Genuine?',
+                      message: 'You are manually overriding the AI decision. This will clear the spam flag and allow the complaint to be processed in the active queue.',
+                      confirmText: 'Override & Clear',
+                      icon: 'fa-user-shield',
+                      color: '#059669',
+                      onConfirm: () => onOverrideSpam(complaint._id),
+                    })}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-black transition-all active:scale-95 border ${
+                      dark ? 'border-emerald-700 bg-emerald-900/20 text-emerald-300 hover:bg-emerald-900/40' : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                    }`}
+                  >
+                    <i className="fas fa-user-shield" />Admin Override — Mark as Genuine
+                  </button>
+                  <button
+                    onClick={() => askConfirm({
+                      title: 'Dismiss & Reject Spam Complaint?',
+                      message: 'Officially reject and dismiss this complaint as fake/spam. The citizen who posted this will see their report marked as "Rejected (Fake / Spam)" instead of pending.',
+                      confirmText: 'Dismiss & Reject as Spam',
+                      icon: 'fa-ban',
+                      color: '#dc2626',
+                      onConfirm: () => onDismissSpam(complaint._id),
+                    })}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-black transition-all active:scale-95 border ${
+                      dark ? 'border-red-800 bg-red-900/20 text-red-300 hover:bg-red-900/40' : 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100'
+                    }`}
+                  >
+                    <i className="fas fa-ban" />Dismiss Spam Complaint
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ) : isDeptHead ? (
@@ -1223,6 +1256,34 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleDismissSpam = async (_id, reason = '') => {
+    try {
+      const updated = await api.dismissSpamIssue(_id, reason);
+      setComplaints(prev => prev.map(c => c._id === _id ? updated : c));
+      setSelectedComplaint(prev => prev?._id === _id ? updated : prev);
+      const refreshedStats = await api.getAdminStats();
+      setStats(refreshedStats);
+      return updated;
+    } catch (err) {
+      console.error('Dismiss spam failed:', err.message);
+      alert('Failed to dismiss spam complaint: ' + (err.message || 'Server error'));
+    }
+  };
+
+  const handleOverrideSpam = async (_id) => {
+    try {
+      const updated = await api.overrideSpamIssue(_id);
+      setComplaints(prev => prev.map(c => c._id === _id ? updated : c));
+      setSelectedComplaint(prev => prev?._id === _id ? updated : prev);
+      const refreshedStats = await api.getAdminStats();
+      setStats(refreshedStats);
+      return updated;
+    } catch (err) {
+      console.error('Override spam failed:', err.message);
+      alert('Failed to override spam complaint: ' + (err.message || 'Server error'));
+    }
+  };
+
   const handleReanalyze = async (_id) => {
     try {
       const updated = await api.reanalyzeIssue(_id);
@@ -1368,6 +1429,8 @@ export default function AdminDashboard() {
               onSubmitProof={handleSubmitProof}
               onApproveResolution={handleApproveResolution}
               onRejectResolution={handleRejectResolution}
+              onDismissSpam={handleDismissSpam}
+              onOverrideSpam={handleOverrideSpam}
               isDeptHead={isDeptHead}
               adminDept={adminDept}
               adminName={adminName}
@@ -1724,16 +1787,18 @@ function ComplaintsTab({ dark, complaints, onSelect, isDeptHead, adminDept, admi
   const [filter, setFilter] = useState(isDeptHead ? 'My Department' : 'All');
 
   const underReviewCount = complaints.filter(c => c.status === 'Under Review').length;
+  const spamCount = complaints.filter(c => c.aiAnalysis?.isSpam || c.status === 'Rejected' || c.status === 'Rejected (Spam)').length;
 
   const filterOptions = isDeptHead
     ? ['My Department', 'All', 'Pending', 'In Progress', 'Under Review', 'Resolved']
-    : ['All', 'Under Review', 'Pending', 'In Progress', 'Resolved'];
+    : ['All', 'Under Review', 'Pending', 'In Progress', 'Resolved', 'Spam / Fake'];
 
   const filtered = complaints.filter(c => {
     const matchQ = c.title?.toLowerCase().includes(search.toLowerCase()) || c.category?.toLowerCase().includes(search.toLowerCase()) || c.location?.toLowerCase().includes(search.toLowerCase());
     if (!matchQ) return false;
 
     if (filter === 'All') return true;
+    if (filter === 'Spam / Fake') return c.aiAnalysis?.isSpam || c.status === 'Rejected' || c.status === 'Rejected (Spam)';
     if (filter === 'My Department') {
       const deptName = adminDept?.toLowerCase();
       const headName = adminName?.toLowerCase();
@@ -1762,25 +1827,40 @@ function ComplaintsTab({ dark, complaints, onSelect, isDeptHead, adminDept, admi
             {filterOptions.map(s => {
               const isActive = filter === s;
               const isReview = s === 'Under Review';
+              const isSpamTab = s === 'Spam / Fake';
               return (
                 <button key={s} onClick={() => setFilter(s)}
                   className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 ${
                     isActive
                       ? isReview
                         ? 'bg-purple-600 border-purple-600 text-white shadow-sm shadow-purple-200'
+                        : isSpamTab
+                        ? 'bg-red-600 border-red-600 text-white shadow-sm shadow-red-200'
                         : 'bg-blue-600 border-blue-600 text-white shadow-sm shadow-blue-200'
                       : dark
-                        ? 'bg-slate-800 border-slate-700 text-slate-400 hover:border-blue-500 hover:text-blue-400'
-                        : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-600'
+                        ? isSpamTab
+                          ? 'bg-slate-800 border-red-900/50 text-red-400 hover:border-red-500 hover:text-red-300'
+                          : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-blue-500 hover:text-blue-400'
+                        : isSpamTab
+                          ? 'bg-red-50 border-red-200 text-red-600 hover:border-red-300 hover:bg-red-100'
+                          : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-600'
                   }`}>
                   {s === 'My Department' && <i className="fas fa-building text-[10px]" />}
                   {isReview && <i className="fas fa-camera text-[10px]" />}
+                  {isSpamTab && <i className="fas fa-shield-virus text-[10px]" />}
                   <span>{s}</span>
                   {isReview && underReviewCount > 0 && (
                     <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
                       isActive ? 'bg-white text-purple-700' : 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
                     }`}>
                       {underReviewCount}
+                    </span>
+                  )}
+                  {isSpamTab && spamCount > 0 && (
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                      isActive ? 'bg-white text-red-700' : 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300'
+                    }`}>
+                      {spamCount}
                     </span>
                   )}
                 </button>

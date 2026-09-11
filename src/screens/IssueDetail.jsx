@@ -33,15 +33,19 @@ const DETAIL_PIN_ICON = L.divIcon({
 const statusStyles = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
   open: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  inprogress: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  inprogress: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  under_review: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
   resolved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  rejected: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
 };
 
 const statusLabels = {
   pending: 'Pending',
   open: 'Pending',
   inprogress: 'In Progress',
+  under_review: 'Under Review',
   resolved: 'Resolved',
+  rejected: 'Rejected (Fake / Spam)',
 };
 
 export default function IssueDetail() {
@@ -75,9 +79,10 @@ export default function IssueDetail() {
   }
 
   const category = CATEGORIES.find(c => c.id === issue.category);
-  const normalizedStatus = issue.status === 'open' ? 'pending' : issue.status;
+  const isFakeOrSpam = issue.status === 'rejected' || issue.aiAnalysis?.isSpam === true;
+  const normalizedStatus = isFakeOrSpam ? 'rejected' : issue.status === 'open' ? 'pending' : issue.status;
   const statusClass = statusStyles[normalizedStatus] || statusStyles.pending;
-  const statusText = statusLabel(normalizedStatus) || statusLabels[normalizedStatus] || statusLabel('pending');
+  const statusText = statusLabels[normalizedStatus] || statusLabel(normalizedStatus) || 'Pending';
   const timeAgo = formatTimeAgo(issue.createdAt);
   const comments = issue.comments || [];
   const coordinates = getCoordinates(issue);
@@ -170,8 +175,43 @@ export default function IssueDetail() {
           </div>
         </div>
       </section>
+ 
+       {/* ── Fake / Spam Rejection Banner ── */}
+       {isFakeOrSpam && (
+         <section className="animate-slideUp overflow-hidden rounded-3xl border border-red-300 bg-red-50 p-6 dark:border-red-800 dark:bg-red-950/40 shadow-md">
+           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+             <div className="flex items-start gap-4">
+               <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-red-500/20 text-red-600 dark:text-red-400 flex-shrink-0">
+                 <i className="fas fa-ban text-2xl" />
+               </div>
+               <div>
+                 <div className="flex flex-wrap items-center gap-2">
+                   <h2 className="text-lg font-black text-red-950 dark:text-red-200">Complaint Rejected (Fake / Spam Report)</h2>
+                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-200 text-red-800 dark:bg-red-900/60 dark:text-red-300">
+                     Dismissed by BMC Admin
+                   </span>
+                 </div>
+                 <p className="text-xs text-red-700 dark:text-red-300 mt-1.5 leading-relaxed">
+                   {issue.aiAnalysis?.rejectionReason || 'The photo or text uploaded does not correspond to a genuine civic problem or municipal issue. False and unrelated submissions are rejected to keep municipal emergency queues clean.'}
+                 </p>
+                 <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] font-bold text-red-800 dark:text-red-300">
+                   <span className="flex items-center gap-1">
+                     <i className="fas fa-robot text-xs" />
+                     Authenticity Score: {typeof issue.aiAnalysis?.finalScore === 'number' ? `${(issue.aiAnalysis.finalScore * 100).toFixed(1)}%` : 'Suspicious'}
+                   </span>
+                   <span>·</span>
+                   <span className="flex items-center gap-1">
+                     <i className="fas fa-user-shield text-xs" />
+                     Flagged by Mumbai Central Administrator
+                   </span>
+                 </div>
+               </div>
+             </div>
+           </div>
+         </section>
+       )}
 
-      {/* ── Official Resolution Proof: Before & After ── */}
+       {/* ── Official Resolution Proof: Before & After ── */}
       {(issue.resolutionProof?.imageUrl || issue.resolvedImage) && (() => {
         const resolvedImageUrl = issue.resolutionProof?.imageUrl || issue.resolvedImage;
         const isResolved = issue.status === 'resolved';

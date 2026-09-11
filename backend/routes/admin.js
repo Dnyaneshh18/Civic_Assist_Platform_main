@@ -14,6 +14,8 @@ import {
   submitResolutionProof,
   approveResolution,
   rejectResolution,
+  dismissSpamIssue,
+  overrideSpamIssue,
 } from '../controllers/adminController.js';
 
 const upload = multer({
@@ -37,5 +39,9 @@ router.get('/analysis', requireAdmin, getAdminAnalysis);
 router.post('/issues/:id/proof', requireAdmin, upload.single('photo'), submitResolutionProof);
 router.post('/issues/:id/approve', requireAdmin, approveResolution);
 router.post('/issues/:id/reject', requireAdmin, rejectResolution);
+
+// Spam Moderation: Dismiss & Override routes
+router.post('/issues/:id/dismiss', requireAdmin, dismissSpamIssue);
+router.post('/issues/:id/override', requireAdmin, overrideSpamIssue);
 
 export default router;

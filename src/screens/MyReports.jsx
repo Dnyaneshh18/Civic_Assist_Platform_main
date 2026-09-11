@@ -60,6 +60,7 @@ const STATUS_STYLES = {
   inprogress: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
   under_review: 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400',
   resolved: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400',
+  rejected: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
   fake: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
 };
 
@@ -72,10 +73,11 @@ export default function MyReports() {
   if (loadingIssues && issues.length === 0) return <MyReportsSkeleton />;
 
   const myIssues = issues.filter(i => i.reporter.userId === currentUser?.id);
-  const fakeIssues = myIssues.filter(i => i.aiAnalysis?.isSpam === true);
-  const hasFake = fakeIssues.length > 0;
+  const rejectedOrFakeIssues = myIssues.filter(i => i.status === 'rejected' || i.aiAnalysis?.isSpam === true);
+  const hasRejected = rejectedOrFakeIssues.length > 0;
   const filtered = filter === 'all' ? myIssues
-    : filter === 'fake' ? fakeIssues
+    : filter === 'rejected' || filter === 'fake' ? rejectedOrFakeIssues
+    : filter === 'pending' ? myIssues.filter(i => (i.status === 'pending' || i.status === 'open') && !i.aiAnalysis?.isSpam && i.status !== 'rejected')
     : myIssues.filter(i => i.status === filter);
 
   const openIssue = (issue) => navigateTo('issueDetail', issue);
@@ -107,23 +109,23 @@ export default function MyReports() {
       <div className="flex gap-2 mb-4 overflow-x-auto pb-1 scrollbar-none">
         {[
           { key: 'all',        label: 'All',         count: myIssues.length },
-          { key: 'pending',    label: 'Pending',      count: myIssues.filter(i => i.status === 'pending').length },
+          { key: 'pending',    label: 'Pending',      count: myIssues.filter(i => (i.status === 'pending' || i.status === 'open') && !i.aiAnalysis?.isSpam && i.status !== 'rejected').length },
           { key: 'inprogress', label: 'In Progress',  count: myIssues.filter(i => i.status === 'inprogress').length },
           { key: 'resolved',   label: 'Resolved',     count: myIssues.filter(i => i.status === 'resolved').length },
-          ...(hasFake ? [{ key: 'fake', label: 'Fake', count: fakeIssues.length, isFake: true }] : []),
+          ...(hasRejected ? [{ key: 'rejected', label: 'Rejected (Spam)', count: rejectedOrFakeIssues.length, isFake: true }] : []),
         ].map(f => (
           <button
             key={f.key}
             onClick={() => setFilter(f.key)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap border transition-all flex-shrink-0 ${
               filter === f.key
-                ? f.isFake ? 'border-transparent text-white bg-red-500' : 'border-transparent text-primary-foreground'
+                ? f.isFake ? 'border-transparent text-white bg-red-600' : 'border-transparent text-primary-foreground'
                 : f.isFake ? 'border-red-300 bg-red-50 text-red-600 dark:bg-red-900/20 dark:border-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30'
                 : 'border-border bg-card text-muted-foreground hover:border-primary/30'
             }`}
             style={filter === f.key && !f.isFake ? { background: 'var(--gradient-primary)' } : {}}
           >
-            {f.isFake && <i className="fas fa-triangle-exclamation text-[10px]" />}
+            {f.isFake && <i className="fas fa-ban text-[10px]" />}
             {f.label}
             {f.count > 0 && (
               <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
@@ -140,10 +142,10 @@ export default function MyReports() {
             <i className="fas fa-file-lines" />
           </div>
           <h3 className="text-base font-bold text-foreground">
-            {filter === 'all' ? t('myReports.noReports') : filter === 'fake' ? 'No fake reports' : tf('myReports.noStatusReports', { status: filter })}
+            {filter === 'all' ? t('myReports.noReports') : filter === 'rejected' || filter === 'fake' ? 'No fake or rejected reports' : tf('myReports.noStatusReports', { status: filter })}
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
-            {filter === 'all' ? t('myReports.issuesAppearHere') : filter === 'fake' ? 'None of your reports have been flagged as fake.' : t('myReports.tryDifferentFilter')}
+            {filter === 'all' ? t('myReports.issuesAppearHere') : filter === 'rejected' || filter === 'fake' ? 'None of your reports have been rejected as fake or spam.' : t('myReports.tryDifferentFilter')}
           </p>
           {filter === 'all' && (
             <button
@@ -157,44 +159,52 @@ export default function MyReports() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map(issue => (
-            <div
-              key={issue.id}
-              onClick={() => openIssue(issue)}
-              className="glass-card p-4 flex gap-4 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group"
-            >
-              <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0">
-                {issue.image ? (
-                  <img src={issue.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-primary-foreground" style={{ background: 'var(--gradient-accent)' }}>
-                    <i className="fas fa-image" />
-                  </div>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="text-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">{issue.title}</h3>
-                  {filter === 'fake' || issue.aiAnalysis?.isSpam ? (
-                    <span className={`badge text-[10px] font-bold flex-shrink-0 ${STATUS_STYLES.fake}`}>
-                      <i className="fas fa-triangle-exclamation mr-1" />Fake
-                    </span>
+          {filtered.map(issue => {
+            const isRejected = issue.status === 'rejected' || issue.aiAnalysis?.isSpam;
+            return (
+              <div
+                key={issue.id}
+                onClick={() => openIssue(issue)}
+                className="glass-card p-4 flex gap-4 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group"
+              >
+                <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0">
+                  {issue.image ? (
+                    <img src={issue.image} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" loading="lazy" />
                   ) : (
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      {(issue.resolutionProof?.imageUrl || issue.resolvedImage) && (
-                        <span className="badge text-[9px] font-black bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 flex items-center gap-1">
-                          <i className="fas fa-camera text-[8px]" /> Proof
-                        </span>
-                      )}
-                      <span className={`badge text-[10px] font-bold ${STATUS_STYLES[issue.status] || STATUS_STYLES.pending}`}>
-                        {issue.status === 'under_review' ? 'Under Review' : (statusLabel(issue.status || 'pending'))}
-                      </span>
+                    <div className="w-full h-full flex items-center justify-center text-primary-foreground" style={{ background: 'var(--gradient-accent)' }}>
+                      <i className="fas fa-image" />
                     </div>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1 truncate">
-                  <i className="fas fa-location-dot mr-1" />{issue.location}
-                </p>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="text-sm font-bold text-foreground truncate group-hover:text-primary transition-colors">{issue.title}</h3>
+                    {isRejected ? (
+                      <span className="badge text-[10px] font-black flex-shrink-0 bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300 border border-red-200 dark:border-red-800 flex items-center gap-1">
+                        <i className="fas fa-ban text-[9px]" />Rejected (Fake / Spam)
+                      </span>
+                    ) : (
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {(issue.resolutionProof?.imageUrl || issue.resolvedImage) && (
+                          <span className="badge text-[9px] font-black bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 flex items-center gap-1">
+                            <i className="fas fa-camera text-[8px]" /> Proof
+                          </span>
+                        )}
+                        <span className={`badge text-[10px] font-bold ${STATUS_STYLES[issue.status] || STATUS_STYLES.pending}`}>
+                          {issue.status === 'under_review' ? 'Under Review' : (statusLabel(issue.status || 'pending'))}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 truncate">
+                    <i className="fas fa-location-dot mr-1" />{issue.location}
+                  </p>
+                  {isRejected && (
+                    <div className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-lg px-2.5 py-1">
+                      <i className="fas fa-triangle-exclamation text-[10px] flex-shrink-0 text-red-500" />
+                      <span className="truncate">Report rejected: The photo does not match a valid civic issue.</span>
+                    </div>
+                  )}
                 <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                   <span><i className="fas fa-heart mr-1 text-red-400" />{issue.likes}</span>
                   <span><i className="fas fa-comment mr-1 text-blue-400" />{issue.comments.length}</span>
@@ -211,7 +221,8 @@ export default function MyReports() {
                 </div>
               </div>
             </div>
-          ))}
+          );
+        })}
         </div>
       )}
 

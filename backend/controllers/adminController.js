@@ -100,7 +100,8 @@ function adminStatusLabel(status) {
     pending: 'Pending',
     inprogress: 'In Progress',
     under_review: 'Under Review',
-    resolved: 'Resolved'
+    resolved: 'Resolved',
+    rejected: 'Rejected',
   };
   return map[status] || 'Pending';
 }
@@ -141,6 +142,9 @@ function formatAdminIssue(issue) {
       authenticity,
       isSpam: !!aiAnalysis.isSpam,
       badge: aiBadge,
+      rejectionReason: aiAnalysis.rejectionReason || null,
+      dismissedAt: aiAnalysis.dismissedAt || null,
+      dismissedBy: aiAnalysis.dismissedBy || null,
     },
   };
 }
@@ -215,10 +219,11 @@ export async function getAdminStats(req, res) {
     const inprogress = all.filter(i => i.status === 'inprogress').length;
     const underReview = all.filter(i => i.status === 'under_review').length;
     const resolved = all.filter(i => i.status === 'resolved').length;
+    const rejected = all.filter(i => i.status === 'rejected').length;
     const fake = all.filter(i => (i.ai_analysis?.authenticity || i.aiAnalysis?.authenticity) === 'fake').length;
     const real = all.filter(i => (i.ai_analysis?.authenticity || i.aiAnalysis?.authenticity) === 'real').length;
     const unknown = Math.max(0, total - fake - real);
-    res.json({ total, pending, inprogress, underReview, resolved, fake, real, unknown });
+    res.json({ total, pending, inprogress, underReview, resolved, rejected, fake, real, unknown });
   } catch (err) {
     console.error('getAdminStats error:', err.message);
     res.status(500).json({ error: 'Server error' });
@@ -233,21 +238,23 @@ export async function updateIssueStatus(req, res) {
       'In Progress': 'inprogress',
       'Under Review': 'under_review',
       Resolved: 'resolved',
+      Rejected: 'rejected',
+      'Rejected (Spam)': 'rejected',
+      Dismissed: 'rejected',
+      pending: 'pending',
+      inprogress: 'inprogress',
+      under_review: 'under_review',
+      resolved: 'resolved',
+      rejected: 'rejected',
+      dismissed: 'rejected',
     };
-    const dbStatus = validStatuses[status];
+    let dbStatus = validStatuses[status];
     if (!dbStatus) return res.status(400).json({ error: 'Invalid status' });
 
     const now = new Date().toLocaleString('en-IN', {
       hour: '2-digit', minute: '2-digit', hour12: true,
       day: '2-digit', month: 'short',
     });
-
-    const timelineEvent = {
-      time: now,
-      event: `Status changed to ${status}`,
-      icon: status === 'Resolved' ? 'fa-circle-check' : status === 'In Progress' ? 'fa-arrows-rotate' : 'fa-clock',
-      color: status === 'Resolved' ? '#059669' : status === 'In Progress' ? '#f59e0b' : '#64748b',
-    };
 
     const { data: existing, error: findErr } = await supabase
       .from('issues')
@@ -257,15 +264,55 @@ export async function updateIssueStatus(req, res) {
 
     if (findErr || !existing) return res.status(404).json({ error: 'Issue not found' });
     const aiAnalysis = existing.ai_analysis || existing.aiAnalysis || {};
+    let updatedAi = aiAnalysis;
+    let assignedTo = existing.assigned_to;
+
+    // Handle spam complaints intelligently
     if (aiAnalysis.isSpam) {
-      return res.status(400).json({ error: 'Spam complaint status cannot be changed' });
+      if (dbStatus === 'pending') {
+        // Admin override to genuine
+        updatedAi = {
+          ...aiAnalysis,
+          isSpam: false,
+          authenticity: 'real',
+          finalScore: Math.max(aiAnalysis.finalScore || 0, 0.75),
+          overriddenAt: now,
+        };
+        assignedTo = null;
+      } else if (dbStatus === 'rejected' || dbStatus === 'resolved') {
+        // Dismiss / reject spam
+        dbStatus = 'rejected';
+        updatedAi = {
+          ...aiAnalysis,
+          isSpam: true,
+          authenticity: 'fake',
+          rejectionReason: 'Flagged as Fake / Spam by Mumbai Central Administrator',
+          dismissedAt: now,
+        };
+      }
     }
+
+    const timelineEvent = {
+      time: now,
+      event: dbStatus === 'rejected'
+        ? 'Complaint dismissed & rejected: Flagged as Fake / Spam by Mumbai Central Administrator'
+        : dbStatus === 'pending' && aiAnalysis.isSpam
+        ? 'Admin override: Verified as genuine by Mumbai Central Administrator — Moved to active queue'
+        : `Status changed to ${status}`,
+      icon: dbStatus === 'rejected' ? 'fa-ban' : dbStatus === 'resolved' ? 'fa-circle-check' : dbStatus === 'inprogress' ? 'fa-arrows-rotate' : 'fa-clock',
+      color: dbStatus === 'rejected' ? '#ef4444' : dbStatus === 'resolved' ? '#059669' : dbStatus === 'inprogress' ? '#f59e0b' : '#64748b',
+    };
 
     const timeline = [...(existing.timeline || []), timelineEvent];
 
     const { data: issue, error: updateErr } = await supabase
       .from('issues')
-      .update({ status: dbStatus, timeline })
+      .update({
+        status: dbStatus,
+        timeline,
+        ai_analysis: updatedAi,
+        assigned_to: assignedTo,
+      })
       .eq('id', req.params.id)
       .select()
       .single();
@@ -381,7 +428,11 @@ export async function reanalyzeIssue(req, res) {
             },
           ];
           update.assigned_to = 'Spam Queue';
+          update.status = 'rejected';
           update.timeline = timeline;
+        } else {
+          update.status = 'pending';
+          update.assigned_to = null;
         }
         await supabase.from('issues').update(update).eq('id', issueId);
         console.log(`Reanalysis complete for ${issueId}: score=${aiAnalysis.finalScore}, spam=${aiAnalysis.isSpam}`);
@@ -775,5 +826,122 @@ export async function rejectResolution(req, res) {
   } catch (err) {
     console.error('rejectResolution error:', err.message);
     res.status(500).json({ error: err.message || 'Failed to reject resolution' });
+  }
+}
+
+export async function dismissSpamIssue(req, res) {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body || {};
+
+    const { data: existing, error: findErr } = await supabase
+      .from('issues')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findErr || !existing) return res.status(404).json({ error: 'Issue not found' });
+
+    const now = new Date().toLocaleString('en-IN', {
+      hour: '2-digit', minute: '2-digit', hour12: true,
+      day: '2-digit', month: 'short', year: 'numeric',
+    });
+
+    const dismissReason = reason?.trim() || 'Photo or description verified as fake / spam. Does not match a legitimate civic issue.';
+
+    const timelineEvent = {
+      time: now,
+      event: `Complaint dismissed & rejected: "${dismissReason}" — Flagged as Fake / Spam by Mumbai Central Administrator`,
+      icon: 'fa-ban',
+      color: '#ef4444',
+      notes: dismissReason,
+    };
+
+    const timeline = [...(existing.timeline || []), timelineEvent];
+    const existingAi = existing.ai_analysis || existing.aiAnalysis || {};
+    const updatedAi = {
+      ...existingAi,
+      isSpam: true,
+      authenticity: 'fake',
+      rejectionReason: dismissReason,
+      dismissedAt: now,
+      dismissedBy: req.admin?.name || 'Mumbai Central Administrator',
+    };
+
+    const { data: updated, error: updateErr } = await supabase
+      .from('issues')
+      .update({
+        status: 'rejected',
+        timeline,
+        ai_analysis: updatedAi,
+        assigned_to: 'Spam Queue',
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateErr) throw updateErr;
+    console.log(`Spam complaint ${id} dismissed & rejected by ${req.admin?.name}`);
+    res.json(formatAdminIssue(updated));
+  } catch (err) {
+    console.error('dismissSpamIssue error:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to dismiss spam complaint' });
+  }
+}
+
+export async function overrideSpamIssue(req, res) {
+  try {
+    const { id } = req.params;
+
+    const { data: existing, error: findErr } = await supabase
+      .from('issues')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (findErr || !existing) return res.status(404).json({ error: 'Issue not found' });
+
+    const now = new Date().toLocaleString('en-IN', {
+      hour: '2-digit', minute: '2-digit', hour12: true,
+      day: '2-digit', month: 'short', year: 'numeric',
+    });
+
+    const timelineEvent = {
+      time: now,
+      event: 'Admin Override: Verified as genuine by Mumbai Central Administrator — Moved to active queue',
+      icon: 'fa-user-shield',
+      color: '#059669',
+      notes: 'Manually cleared from spam queue by administrator inspection.',
+    };
+
+    const timeline = [...(existing.timeline || []), timelineEvent];
+    const existingAi = existing.ai_analysis || existing.aiAnalysis || {};
+    const updatedAi = {
+      ...existingAi,
+      isSpam: false,
+      authenticity: 'real',
+      finalScore: Math.max(existingAi.finalScore || 0, 0.85),
+      overriddenAt: now,
+      overriddenBy: req.admin?.name || 'Mumbai Central Administrator',
+    };
+
+    const { data: updated, error: updateErr } = await supabase
+      .from('issues')
+      .update({
+        status: 'pending',
+        timeline,
+        ai_analysis: updatedAi,
+        assigned_to: null,
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateErr) throw updateErr;
+    console.log(`Spam complaint ${id} overridden and marked as genuine by ${req.admin?.name}`);
+    res.json(formatAdminIssue(updated));
+  } catch (err) {
+    console.error('overrideSpamIssue error:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to override spam complaint' });
   }
 }
