@@ -191,3 +191,42 @@ An AI-powered civic platform that transforms raw citizen complaints into verifie
 ### 🔲 BOTTOM-RIGHT BOX: GitHub Repository
 * **Team's Public GitHub Repository URL:**  
   `https://github.com/Dnyaneshh18/mit_hack.git`
+
+---
+
+## 📌 SLIDE 07: Build With
+
+### 🔲 ROW 1, LEFT BOX: Frontend
+* **Core Framework:** React 18 & Vite (Ultra-fast build, HMR, lightweight client bundle).
+* **Styling & Design System:** Tailwind CSS (Modern glassmorphism UI, fluid dark/light themes).
+* **Mapping & GIS:** Leaflet & React-Leaflet (Interactive geospatial pins, regional clustering).
+* **Voice & Icons:** Web Speech API (Bilingual Speech-to-Text), FontAwesome Pro.
+
+### 🔲 ROW 1, RIGHT BOX: Backend
+* **Runtime & Framework:** Node.js & Express.js (REST API, high-concurrency event loop).
+* **AI Subprocess Worker:** Python 3.10+ (Persistent PyTorch AI process for live scans).
+* **Media Stream Handling:** Multer (Memory buffers for seamless cloud upload streaming).
+* **Security & Guard:** Role-Based Access Control (RBAC) separating Citizen, Dept Head, and Admin.
+
+### 🔲 ROW 2, LEFT BOX: Database
+* **Primary Database:** Supabase (Cloud-managed PostgreSQL with relational integrity).
+* **Live Query Indexing:** Real-time state triggers for instant ticket milestone tracking.
+* **Spatial & Audit Data:** JSONB support for 6-decimal coordinates (`lat, lng`) and audit logs.
+
+### 🔲 ROW 2, RIGHT BOX: AI/ML
+* **Vision-Language Model:** OpenAI CLIP (`ViT-B/32`) via PyTorch for cross-modal fraud detection.
+* **NLP & Text Intelligence:** HuggingFace Transformers (DistilBERT) for category & urgency parsing.
+* **Inference Pipeline:** Sub-800ms cosine similarity calculation in joint embedding space.
+
+### 🔲 ROW 3, LEFT BOX: Tools & Services
+* **Code Repository & CI/CD:** GitHub (`https://github.com/Dnyaneshh18/mit_hack.git`).
+* **Cloud Media CDN:** Cloudinary (Incident image storage & before/after resolution proof CDN).
+* **Geocoding API:** OpenStreetMap & Nominatim API (`zoom=18` sub-building address resolution).
+* **Turn-by-Turn Navigation:** Google Maps Deep Links API for 1-click field routing.
+
+### 🔲 ROW 3, RIGHT BOX: Architecture Principle
+* **Modular & Decoupled:** Independent tiers for Citizen UI, Municipal Command, Express, and AI.
+* **Zero-Trust Verification:** Department heads submit proof; only Central Admin can officially verify.
+* **Serverless & Scalable:** Zero heavy on-premise hardware dependencies; scales across BMC, PCMC, PMC.
+* **API-First Design:** Clean RESTful contracts ready for WhatsApp bot and Smart City integration.
+
