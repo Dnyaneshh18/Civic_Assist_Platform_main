@@ -23,6 +23,14 @@ function adminHeaders(extra = {}) {
 }
 
 async function handle(res) {
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`Server error (${res.status}): ${res.statusText || 'Endpoint returned HTML instead of JSON. Check backend URL.'}`);
+    }
+    throw new Error('Backend returned non-JSON response. Please verify VITE_API_BASE points to the running backend.');
+  }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
