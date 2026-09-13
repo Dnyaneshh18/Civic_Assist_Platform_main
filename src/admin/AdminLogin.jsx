@@ -8,27 +8,94 @@ export default function AdminLogin() {
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  const [activeTab, setActiveTab] = useState('all'); // 'all' | 'dept' | 'admin'
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    if (!adminId.trim()) { setError('Admin ID is required'); return; }
-    if (password.length < 3) { setError('Password must be at least 3 characters'); return; }
+  const ACCOUNTS = [
+    {
+      id: 'ADM-00001',
+      password: 'admin123',
+      name: 'Central Admin',
+      title: 'Mumbai Central Admin',
+      desc: 'Full Municipal Authority',
+      category: 'admin',
+      icon: 'fa-crown',
+      color: 'amber',
+      accent: 'border-amber-300 bg-amber-50/70 text-amber-800 ring-amber-100',
+    },
+    {
+      id: 'DEPT-WASTE',
+      password: 'waste123',
+      name: 'Solid Waste Mgmt',
+      title: 'Solid Waste Mgmt',
+      desc: 'Head: Ms. Asha Kulkarni',
+      category: 'dept',
+      icon: 'fa-trash',
+      color: 'emerald',
+      accent: 'border-emerald-300 bg-emerald-50/70 text-emerald-800 ring-emerald-100',
+    },
+    {
+      id: 'DEPT-ROAD',
+      password: 'road123',
+      name: 'Roads & Potholes',
+      title: 'Roads & Infrastructure',
+      desc: 'Head: Mr. Imran Shaikh',
+      category: 'dept',
+      icon: 'fa-road',
+      color: 'purple',
+      accent: 'border-purple-300 bg-purple-50/70 text-purple-800 ring-purple-100',
+    },
+    {
+      id: 'DEPT-WATER',
+      password: 'water123',
+      name: 'Water Supply',
+      title: 'Water Supply Dept',
+      desc: 'Head: Mr. Sandeep Patil',
+      category: 'dept',
+      icon: 'fa-droplet',
+      color: 'cyan',
+      accent: 'border-cyan-300 bg-cyan-50/70 text-cyan-800 ring-cyan-100',
+    },
+    {
+      id: 'DEPT-ELEC',
+      password: 'elec123',
+      name: 'Street Lighting',
+      title: 'Street Lighting & Power',
+      desc: 'Head: Mr. Rohan Deshmukh',
+      category: 'dept',
+      icon: 'fa-bolt',
+      color: 'amber',
+      accent: 'border-amber-300 bg-amber-50/70 text-amber-800 ring-amber-100',
+    },
+    {
+      id: 'DEPT-SEWAGE',
+      password: 'sewage123',
+      name: 'Sewerage Dept',
+      title: 'Sewerage & Drainage',
+      desc: 'Head: Mr. Prakash More',
+      category: 'dept',
+      icon: 'fa-faucet-drip',
+      color: 'indigo',
+      accent: 'border-indigo-300 bg-indigo-50/70 text-indigo-800 ring-indigo-100',
+    },
+    {
+      id: 'DEPT-PARK',
+      password: 'park123',
+      name: 'Parks & Gardens',
+      title: 'Parks & Greenery',
+      desc: 'Head: Ms. Neha Jadhav',
+      category: 'dept',
+      icon: 'fa-tree',
+      color: 'green',
+      accent: 'border-green-300 bg-green-50/70 text-green-800 ring-green-100',
+    },
+  ];
+
+  const filteredAccounts = ACCOUNTS.filter(a => activeTab === 'all' || a.category === activeTab);
+
+  const applyPreset = (acc) => {
+    setAdminId(acc.id);
+    setPassword(acc.password);
     setError('');
-    setLoading(true);
-    try {
-      const result = await api.adminLogin(adminId.trim(), password);
-      localStorage.setItem('ca_token', result.token);
-      localStorage.setItem('ca_admin_role', result.role || 'admin');
-      localStorage.setItem('ca_admin_name', result.name || 'Administrator');
-      localStorage.setItem('ca_admin_dept', result.department || 'All');
-      navigateTo('adminDashboard');
-    } catch (err) {
-      setError(err.message || 'Invalid credentials');
-    } finally {
-      setLoading(false);
-    }
   };
 
   return (
@@ -116,44 +183,60 @@ export default function AdminLogin() {
           </div>
 
           <div className="mb-4">
-            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between">
-              <span>Quick Login Presets</span>
-              <span className="text-blue-600 font-semibold text-[10px]">1-click autofill</span>
-            </p>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                onClick={() => { setAdminId('ADM-00001'); setPassword('admin123'); setError(''); }}
-                className={`text-left p-2 rounded-xl border text-[11px] font-bold transition-all ${adminId === 'ADM-00001' ? 'bg-blue-50 border-blue-300 text-blue-700 ring-2 ring-blue-100' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}
-              >
-                <div className="flex items-center gap-1.5 truncate"><i className="fas fa-crown text-amber-500 text-xs" /> Mumbai Central Admin</div>
-                <span className="text-[9px] text-slate-400 font-medium">Full Municipal Authority</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => { setAdminId('DEPT-WASTE'); setPassword('waste123'); setError(''); }}
-                className={`text-left p-2 rounded-xl border text-[11px] font-bold transition-all ${adminId === 'DEPT-WASTE' ? 'bg-emerald-50 border-emerald-300 text-emerald-700 ring-2 ring-emerald-100' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}
-              >
-                <div className="flex items-center gap-1.5 truncate"><i className="fas fa-trash text-emerald-600 text-xs" /> Solid Waste Mgmt</div>
-                <span className="text-[9px] text-slate-400 font-medium">Head: Ms. Asha Kulkarni</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => { setAdminId('DEPT-ROAD'); setPassword('road123'); setError(''); }}
-                className={`text-left p-2 rounded-xl border text-[11px] font-bold transition-all ${adminId === 'DEPT-ROAD' ? 'bg-purple-50 border-purple-300 text-purple-700 ring-2 ring-purple-100' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}
-              >
-                <div className="flex items-center gap-1.5 truncate"><i className="fas fa-road text-purple-600 text-xs" /> Roads & Potholes</div>
-                <span className="text-[9px] text-slate-400 font-medium">Head: Mr. Imran Shaikh</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => { setAdminId('DEPT-WATER'); setPassword('water123'); setError(''); }}
-                className={`text-left p-2 rounded-xl border text-[11px] font-bold transition-all ${adminId === 'DEPT-WATER' ? 'bg-cyan-50 border-cyan-300 text-cyan-700 ring-2 ring-cyan-100' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}
-              >
-                <div className="flex items-center gap-1.5 truncate"><i className="fas fa-droplet text-cyan-600 text-xs" /> Water Supply</div>
-                <span className="text-[9px] text-slate-400 font-medium">Head: Mr. Sandeep Patil</span>
-              </button>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Choose Role Preset</span>
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[10px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('all')}
+                  className={`px-2 py-0.5 rounded-md transition-all ${activeTab === 'all' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  All (7)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('dept')}
+                  className={`px-2 py-0.5 rounded-md transition-all ${activeTab === 'dept' ? 'bg-white text-purple-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  Dept Heads (6)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('admin')}
+                  className={`px-2 py-0.5 rounded-md transition-all ${activeTab === 'admin' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  Central (1)
+                </button>
+              </div>
             </div>
+
+            <div className="grid grid-cols-2 gap-1.5 max-h-[160px] overflow-y-auto pr-1">
+              {filteredAccounts.map((acc) => {
+                const isSelected = adminId === acc.id;
+                return (
+                  <button
+                    key={acc.id}
+                    type="button"
+                    onClick={() => applyPreset(acc)}
+                    className={`text-left p-2 rounded-xl border text-[11px] font-bold transition-all ${
+                      isSelected
+                        ? `${acc.accent} ring-2`
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 truncate">
+                      <i className={`fas ${acc.icon} text-xs`} />
+                      <span className="truncate">{acc.title}</span>
+                    </div>
+                    <span className="text-[9px] text-slate-400 font-medium block truncate mt-0.5">{acc.desc}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-slate-400 mt-1 flex items-center justify-between">
+              <span>Selected ID: <strong className="text-slate-700 font-mono">{adminId || 'None'}</strong></span>
+              <span className="text-blue-600 font-semibold">1-click autofills ID & Pass</span>
+            </p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-3">

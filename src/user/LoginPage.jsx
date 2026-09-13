@@ -577,13 +577,33 @@ export default function LoginPage() {
                   {t('login.termsPrefix')} <button className="text-blue-500 font-semibold hover:underline">{t('login.terms')}</button>
                 </p>
               </div>
-              <div className="mt-8 pt-6 border-t border-slate-100">
-                <p className="text-center text-xs text-slate-400 mb-3">{t('login.officialPrompt')}</p>
-                <button onClick={() => navigateTo('adminLogin')}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-all">
-                  <i className="fas fa-shield-halved text-sm" />
-                  {t('login.adminPortal')}
-                </button>
+              <div className="mt-7 pt-5 border-t border-slate-100">
+                <p className="text-center text-xs font-semibold text-slate-400 mb-2.5">Official & Municipal Logins</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => navigateTo('adminLogin')}
+                    className="flex flex-col items-center justify-center p-3 rounded-xl border border-purple-200 bg-purple-50/60 hover:bg-purple-50 text-purple-800 text-xs font-bold transition-all hover:scale-[1.02] shadow-sm text-center"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-purple-600 text-white flex items-center justify-center mb-1.5 shadow-sm">
+                      <i className="fas fa-building-user text-xs" />
+                    </div>
+                    <span>Department Heads</span>
+                    <span className="text-[9px] text-purple-600 font-medium mt-0.5">Waste, Roads, Water</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => navigateTo('adminLogin')}
+                    className="flex flex-col items-center justify-center p-3 rounded-xl border border-blue-200 bg-blue-50/60 hover:bg-blue-50 text-blue-800 text-xs font-bold transition-all hover:scale-[1.02] shadow-sm text-center"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center mb-1.5 shadow-sm">
+                      <i className="fas fa-shield-halved text-xs" />
+                    </div>
+                    <span>Central Admin</span>
+                    <span className="text-[9px] text-blue-600 font-medium mt-0.5">Full Authority</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}
