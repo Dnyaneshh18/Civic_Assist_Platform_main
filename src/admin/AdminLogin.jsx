@@ -90,12 +90,35 @@ export default function AdminLogin() {
     },
   ];
 
+  const [error, setError] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
+
   const filteredAccounts = ACCOUNTS.filter(a => activeTab === 'all' || a.category === activeTab);
 
   const applyPreset = (acc) => {
     setAdminId(acc.id);
     setPassword(acc.password);
     setError('');
+  };
+
+  const handleLogin = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!adminId.trim()) { setError('Admin ID is required'); return; }
+    if (password.length < 3) { setError('Password must be at least 3 characters'); return; }
+    setError('');
+    setLoading(true);
+    try {
+      const result = await api.adminLogin(adminId.trim(), password);
+      localStorage.setItem('ca_token', result.token);
+      localStorage.setItem('ca_admin_role', result.role || 'admin');
+      localStorage.setItem('ca_admin_name', result.name || 'Administrator');
+      localStorage.setItem('ca_admin_dept', result.department || 'All');
+      navigateTo('adminDashboard');
+    } catch (err) {
+      setError(err.message || 'Invalid credentials');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -164,7 +187,7 @@ export default function AdminLogin() {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-4 bg-white overflow-hidden">
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-8 bg-white overflow-y-auto">
         <div className="w-full max-w-[380px]">
           <div className="lg:hidden flex items-center gap-2 mb-4">
             <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center">
