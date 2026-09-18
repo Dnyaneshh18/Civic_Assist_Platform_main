@@ -84,7 +84,7 @@ IMPORTANT: Return ONLY valid JSON. Do not include markdown blocks or any other t
     }
 
     const response = await groq.chat.completions.create({
-      model: 'llama-3.2-11b-vision-preview',
+      model: 'llama-3.2-11b-vision-instruct',
       messages: [
         {
           role: 'user',
