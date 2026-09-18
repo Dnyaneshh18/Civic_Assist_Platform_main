@@ -70,7 +70,7 @@ Evaluate two aspects and return ONLY a JSON response:
     const contents = [];
     
     if (inlineData) {
-      contents.push(inlineData);
+      contents.push({ inlineData });
     }
     contents.push(prompt);
 
