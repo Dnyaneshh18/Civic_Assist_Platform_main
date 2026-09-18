@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import Groq from 'groq-sdk';
 
 const AI_CATEGORY_MAP = {
   road: 'Road',
@@ -18,8 +18,10 @@ function toAiCategory(category) {
 
 export async function runAIAnalysis({ description, category, imageBuffer, imageMimeType, imageUrl }) {
   try {
-    if (!process.env.GEMINI_API_KEY) {
-      console.warn('GEMINI_API_KEY is not set. Skipping AI analysis.');
+    const groqKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY; // Fallback so they don't have to rename env var immediately if they just replaced the value
+    
+    if (!groqKey) {
+      console.warn('GROQ_API_KEY is not set. Skipping AI analysis.');
       return {
         textScore: 0,
         imageScore: 0,
@@ -29,25 +31,20 @@ export async function runAIAnalysis({ description, category, imageBuffer, imageM
       };
     }
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const groq = new Groq({ apiKey: groqKey });
     const aiCategory = toAiCategory(category);
     
-    let inlineData = null;
+    let base64Image = null;
 
     if (imageBuffer) {
-      inlineData = {
-        data: imageBuffer.toString('base64'),
-        mimeType: imageMimeType || 'image/jpeg',
-      };
+      base64Image = `data:${imageMimeType || 'image/jpeg'};base64,${imageBuffer.toString('base64')}`;
     } else if (imageUrl) {
       try {
         const res = await fetch(imageUrl);
         if (res.ok) {
           const arr = await res.arrayBuffer();
-          inlineData = {
-            data: Buffer.from(arr).toString('base64'),
-            mimeType: res.headers.get('content-type') || 'image/jpeg',
-          };
+          const mime = res.headers.get('content-type') || 'image/jpeg';
+          base64Image = `data:${mime};base64,${Buffer.from(arr).toString('base64')}`;
         }
       } catch (err) {
         console.warn(`AI image fetch failed: ${err.message}`);
@@ -61,43 +58,46 @@ Analyze the following civic issue report to determine if it is a genuine, action
 Category Selected by User: ${aiCategory}
 Complaint Description: "${description || 'No description provided.'}"
 
-Evaluate two aspects and return ONLY a JSON response:
-1. text_score (0.0 to 1.0): Does the text legitimately describe a real-world civic issue matching the category? (Spam, gibberish, rants, jokes = 0.0)
-2. image_score (0.0 to 1.0): If an image is provided, does it visually show the civic issue matching the category and description? (Memes, selfies, unrelated photos, screenshots = 0.0)
-3. fake_score (0.0 to 1.0): The final authenticity score. 1.0 = Genuine issue, 0.0 = Fake/Spam. (If it's clearly an animal photo or unrelated image, give it a low score).
+Evaluate two aspects and return a JSON object exactly matching this schema:
+{
+  "text_score": 0.9,
+  "image_score": 0.8,
+  "fake_score": 0.85
+}
+
+Scoring guide (0.0 to 1.0):
+1. text_score: Does the text legitimately describe a real-world civic issue matching the category? (Spam, gibberish, rants = 0.0)
+2. image_score: If an image is provided, does it visually show the civic issue matching the category and description? (Memes, selfies, unrelated = 0.0)
+3. fake_score: The final authenticity score. 1.0 = Genuine issue, 0.0 = Fake/Spam.
+
+IMPORTANT: Return ONLY valid JSON. Do not include markdown blocks or any other text.
 `;
 
-    const contents = [];
+    const content = [];
+    content.push({ type: 'text', text: prompt });
     
-    if (inlineData) {
-      contents.push({ inlineData });
+    if (base64Image) {
+      content.push({
+        type: 'image_url',
+        image_url: { url: base64Image }
+      });
     }
-    contents.push(prompt);
 
-    const responseSchema = {
-      type: SchemaType.OBJECT,
-      properties: {
-        text_score: { type: SchemaType.NUMBER, description: "Text authenticity score (0.0 to 1.0)" },
-        image_score: { type: SchemaType.NUMBER, description: "Image authenticity score (0.0 to 1.0)" },
-        fake_score: { type: SchemaType.NUMBER, description: "Final authenticity score (1.0 = Genuine, 0.0 = Fake/Spam)" },
-      },
-      required: ["text_score", "image_score", "fake_score"]
-    };
-
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
-      generationConfig: {
-        responseMimeType: 'application/json',
-        responseSchema,
-        temperature: 0.2,
-      },
+    const response = await groq.chat.completions.create({
+      model: 'llama-3.2-11b-vision-preview',
+      messages: [
+        {
+          role: 'user',
+          content: content,
+        }
+      ],
+      temperature: 0.1,
+      response_format: { type: 'json_object' }
     });
 
-    const resultAPI = await model.generateContent(contents);
-    const responseText = resultAPI.response.text();
-
+    const responseText = response.choices[0]?.message?.content;
     if (!responseText) {
-      throw new Error("Gemini returned empty text");
+      throw new Error("Groq returned empty text");
     }
 
     const result = JSON.parse(responseText);
@@ -121,7 +121,7 @@ Evaluate two aspects and return ONLY a JSON response:
       finalScore: 0,
       authenticity: 'error',
       isSpam: false,
-      rejectionReason: err.message,
+      rejectionReason: `[Groq Error]: ${err.message}`,
     };
   }
 }
