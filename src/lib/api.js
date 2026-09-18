@@ -22,6 +22,19 @@ function adminHeaders(extra = {}) {
   return h;
 }
 
+async function fetchWithRetry(url, options, retries = 2) {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const res = await fetch(url, options);
+      return res;
+    } catch (err) {
+      if (i === retries) throw err;
+      // Wait 3 seconds before retrying (gives Render time to wake up)
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  }
+}
+
 async function handle(res) {
   const contentType = res.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
@@ -38,7 +51,7 @@ async function handle(res) {
 
 export const api = {
   async sendOtp(phone) {
-    return handle(await fetch(`${BASE}/auth/send-otp`, {
+    return handle(await fetchWithRetry(`${BASE}/auth/send-otp`, {
       method: 'POST',
       headers: headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ phone }),
@@ -62,7 +75,7 @@ export const api = {
   },
 
   async adminLogin(adminId, password) {
-    return handle(await fetch(`${BASE}/auth/admin-login`, {
+    return handle(await fetchWithRetry(`${BASE}/auth/admin-login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ adminId, password }),
