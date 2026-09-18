@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 
 const AI_CATEGORY_MAP = {
   road: 'Road',
@@ -29,7 +29,7 @@ export async function runAIAnalysis({ description, category, imageBuffer, imageM
       };
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const aiCategory = toAiCategory(category);
     
     let inlineData = null;
@@ -68,46 +68,39 @@ Evaluate two aspects and return ONLY a JSON response:
 `;
 
     const contents = [];
+    
     if (inlineData) {
-      contents.push({
-        role: 'user',
-        parts: [
-          { inlineData },
-          { text: prompt }
-        ]
-      });
-    } else {
-      contents.push({
-        role: 'user',
-        parts: [{ text: prompt }]
-      });
+      contents.push(inlineData);
     }
+    contents.push(prompt);
 
     const responseSchema = {
-      type: Type.OBJECT,
+      type: SchemaType.OBJECT,
       properties: {
-        text_score: { type: Type.NUMBER, description: "Text authenticity score (0.0 to 1.0)" },
-        image_score: { type: Type.NUMBER, description: "Image authenticity score (0.0 to 1.0)" },
-        fake_score: { type: Type.NUMBER, description: "Final authenticity score (1.0 = Genuine, 0.0 = Fake/Spam)" },
+        text_score: { type: SchemaType.NUMBER, description: "Text authenticity score (0.0 to 1.0)" },
+        image_score: { type: SchemaType.NUMBER, description: "Image authenticity score (0.0 to 1.0)" },
+        fake_score: { type: SchemaType.NUMBER, description: "Final authenticity score (1.0 = Genuine, 0.0 = Fake/Spam)" },
       },
       required: ["text_score", "image_score", "fake_score"]
     };
 
-    const response = await ai.models.generateContent({
+    const model = genAI.getGenerativeModel({
       model: 'gemini-1.5-flash',
-      contents,
-      config: {
+      generationConfig: {
         responseMimeType: 'application/json',
         responseSchema,
-        temperature: 0.2, // Low temperature for consistent classification
+        temperature: 0.2,
       },
     });
 
-    if (!response.text) {
+    const resultAPI = await model.generateContent(contents);
+    const responseText = resultAPI.response.text();
+
+    if (!responseText) {
       throw new Error("Gemini returned empty text");
     }
 
-    const result = JSON.parse(response.text);
+    const result = JSON.parse(responseText);
 
     const finalScore = Number(result?.fake_score ?? 0.5);
     const authenticity = finalScore < 0.5 ? 'fake' : 'real';
