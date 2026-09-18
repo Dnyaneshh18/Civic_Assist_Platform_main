@@ -58,20 +58,30 @@ Analyze the following civic issue report to determine if it is a genuine, action
 Category Selected by User: ${aiCategory}
 Complaint Description: "${description || 'No description provided.'}"
 
-Evaluate the authenticity and return ONLY a raw JSON object exactly matching this schema format. You MUST calculate your own scores between 0.0 and 1.0 based on the image and text provided. Do NOT just copy these example numbers:
+CRITICAL INSTRUCTION: You must verify if the uploaded image actually matches the description keywords (e.g., garbage, potholes, sewage, water supply, parks, gardens, noise, electricity, street light). If the image shows something completely unrelated like flowers, selfies, memes, or animals, it MUST be marked as spam.
+
+Return ONLY a raw JSON object exactly matching this schema. Calculate the scores yourself between 0.0 and 1.0 based on these examples:
+
+Example 1 (Genuine complaint where image matches text):
 {
-  "text_score": 0.95,
-  "image_score": 0.90,
-  "fake_score": 0.92
+  "text_score": 0.9,
+  "image_score": 0.8,
+  "fake_score": 0.85
+}
+
+Example 2 (Spam complaint where text is real but image is unrelated like flowers/animals):
+{
+  "text_score": 0.9,
+  "image_score": 0.0,
+  "fake_score": 0.0
 }
 
 Scoring guide (0.0 to 1.0):
 1. text_score: Does the text legitimately describe a real-world civic issue matching the category? (Spam, gibberish, rants = 0.0)
-2. image_score: Look very closely at the image. Does it actually show a civic issue (like a pothole, broken streetlight, or garbage pile)? 
-   CRITICAL WARNING: If the image is a picture of an animal (like a cat, dog, bird), a meme, a selfie, a cartoon, or completely unrelated to the description, YOU MUST SCORE IT 0.0.
-3. fake_score: The final authenticity score. If either the text or the image is clearly fake, unrelated, or spam (like an animal photo for a garbage complaint), the fake_score MUST be 0.0. 1.0 = Genuine issue.
+2. image_score: Look very closely at the image. Does it actually show a civic issue (like a pothole, broken streetlight, or garbage pile)? (Animals, flowers, selfies, unrelated = 0.0)
+3. fake_score: The final authenticity score. If the image is unrelated to the text (like a flower photo for a streetlight complaint), the fake_score MUST be 0.0. 1.0 = Genuine issue.
 
-IMPORTANT: Return ONLY valid JSON. Do not include markdown blocks or any other text.
+IMPORTANT: Return ONLY the final JSON object. Do not include markdown blocks or any other text.
 `;
 
     let responseText = null;
