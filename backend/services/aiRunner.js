@@ -1,4 +1,4 @@
-import Groq from 'groq-sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const AI_CATEGORY_MAP = {
   road: 'Road',
@@ -18,10 +18,8 @@ function toAiCategory(category) {
 
 export async function runAIAnalysis({ description, category, imageBuffer, imageMimeType, imageUrl }) {
   try {
-    const groqKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY; // Fallback so they don't have to rename env var immediately if they just replaced the value
-    
-    if (!groqKey) {
-      console.warn('GROQ_API_KEY is not set. Skipping AI analysis.');
+    if (!process.env.GEMINI_API_KEY) {
+      console.warn('GEMINI_API_KEY is not set. Skipping AI analysis.');
       return {
         textScore: 0,
         imageScore: 0,
@@ -31,20 +29,25 @@ export async function runAIAnalysis({ description, category, imageBuffer, imageM
       };
     }
 
-    const groq = new Groq({ apiKey: groqKey });
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const aiCategory = toAiCategory(category);
     
-    let base64Image = null;
+    let inlineData = null;
 
     if (imageBuffer) {
-      base64Image = `data:${imageMimeType || 'image/jpeg'};base64,${imageBuffer.toString('base64')}`;
+      inlineData = {
+        data: imageBuffer.toString('base64'),
+        mimeType: imageMimeType || 'image/jpeg',
+      };
     } else if (imageUrl) {
       try {
         const res = await fetch(imageUrl);
         if (res.ok) {
           const arr = await res.arrayBuffer();
-          const mime = res.headers.get('content-type') || 'image/jpeg';
-          base64Image = `data:${mime};base64,${Buffer.from(arr).toString('base64')}`;
+          inlineData = {
+            data: Buffer.from(arr).toString('base64'),
+            mimeType: res.headers.get('content-type') || 'image/jpeg',
+          };
         }
       } catch (err) {
         console.warn(`AI image fetch failed: ${err.message}`);
@@ -58,7 +61,7 @@ Analyze the following civic issue report to determine if it is a genuine, action
 Category Selected by User: ${aiCategory}
 Complaint Description: "${description || 'No description provided.'}"
 
-Evaluate two aspects and return a JSON object exactly matching this schema:
+Evaluate two aspects and return ONLY a raw JSON object exactly matching this schema:
 {
   "text_score": 0.9,
   "image_score": 0.8,
@@ -73,59 +76,36 @@ Scoring guide (0.0 to 1.0):
 IMPORTANT: Return ONLY valid JSON. Do not include markdown blocks or any other text.
 `;
 
-    const content = [];
-    content.push({ type: 'text', text: prompt });
-    
-    if (base64Image) {
-      content.push({
-        type: 'image_url',
-        image_url: { url: base64Image }
-      });
+    const contents = [];
+    if (inlineData) {
+      contents.push({ inlineData });
     }
+    contents.push(prompt);
 
-    const VISION_MODELS = [
-      'llama-3.2-11b-vision-preview',
-      'llama-3.2-90b-vision-preview',
-      'llama-3.2-11b-vision-instruct',
-      'llama-3.2-90b-vision-instruct',
-      'llama-3.2-11b-vision',
-      'llama-3.2-90b-vision'
-    ];
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.1,
+      },
+    });
 
-    let responseText = null;
-    let lastErr = null;
-
-    for (const modelId of VISION_MODELS) {
-      try {
-        const response = await groq.chat.completions.create({
-          model: modelId,
-          messages: [
-            {
-              role: 'user',
-              content: content,
-            }
-          ],
-          temperature: 0.1,
-          response_format: { type: 'json_object' }
-        });
-        
-        responseText = response.choices[0]?.message?.content;
-        if (responseText) {
-          console.log(`Successfully used Groq model: ${modelId}`);
-          break; // Success! Break the loop.
-        }
-      } catch (err) {
-        lastErr = err;
-        console.warn(`Groq model ${modelId} failed: ${err.message}. Trying next model...`);
-        // If it's a 400 or 404 about the model not existing, continue to the next one
-      }
-    }
+    const resultAPI = await model.generateContent(contents);
+    let responseText = resultAPI.response.text();
 
     if (!responseText) {
-      throw new Error(`All Groq vision models failed. Last error: ${lastErr?.message}`);
+      throw new Error("Gemini returned empty text");
     }
 
-    const result = JSON.parse(responseText);
+    // Robust JSON parsing (strip markdown backticks if Gemini includes them by accident)
+    responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+    
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (e) {
+      throw new Error(`Failed to parse AI JSON response. Raw text was: ${responseText}`);
+    }
 
     const finalScore = Number(result?.fake_score ?? 0.5);
     const authenticity = finalScore < 0.5 ? 'fake' : 'real';
@@ -146,7 +126,7 @@ IMPORTANT: Return ONLY valid JSON. Do not include markdown blocks or any other t
       finalScore: 0,
       authenticity: 'error',
       isSpam: false,
-      rejectionReason: `[Groq Error]: ${err.message}`,
+      rejectionReason: `[AI Error]: ${err.message}`,
     };
   }
 }
