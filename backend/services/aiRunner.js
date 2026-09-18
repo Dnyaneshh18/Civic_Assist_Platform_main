@@ -82,19 +82,43 @@ IMPORTANT: Return ONLY valid JSON. Do not include markdown blocks or any other t
     }
     contents.push(prompt);
 
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.1,
-      },
-    });
+    const GEMINI_MODELS = [
+      'gemini-1.5-flash',
+      'gemini-1.5-flash-latest',
+      'gemini-1.5-pro',
+      'gemini-1.5-pro-latest',
+      'gemini-1.5-flash-8b',
+      'gemini-1.0-pro-vision-latest'
+    ];
 
-    const resultAPI = await model.generateContent(contents);
-    let responseText = resultAPI.response.text();
+    let responseText = null;
+    let lastErr = null;
+
+    for (const modelId of GEMINI_MODELS) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelId,
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.1,
+          },
+        });
+
+        const resultAPI = await model.generateContent(contents);
+        responseText = resultAPI.response.text();
+        
+        if (responseText) {
+          console.log(`Successfully used Gemini model: ${modelId}`);
+          break; // Success! Break the loop.
+        }
+      } catch (err) {
+        lastErr = err;
+        console.warn(`Gemini model ${modelId} failed: ${err.message}. Trying next model...`);
+      }
+    }
 
     if (!responseText) {
-      throw new Error("Gemini returned empty text");
+      throw new Error(`All Gemini models failed. Last error: ${lastErr?.message}`);
     }
 
     // Robust JSON parsing (strip markdown backticks if Gemini includes them by accident)
