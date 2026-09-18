@@ -58,30 +58,24 @@ Analyze the following civic issue report to determine if it is a genuine, action
 Category Selected by User: ${aiCategory}
 Complaint Description: "${description || 'No description provided.'}"
 
-CRITICAL INSTRUCTION: You must verify if the uploaded image actually matches the description keywords (e.g., garbage, potholes, sewage, water supply, parks, gardens, noise, electricity, street light). If the image shows something completely unrelated like flowers, selfies, memes, or animals, it MUST be marked as spam.
+CRITICAL INSTRUCTION: You must verify if the uploaded image actually matches the description keywords (e.g., garbage, potholes, sewage, water supply, parks, gardens, noise, electricity, street light). If the image shows something completely unrelated like flowers, selfies, memes, or animals (like cats or dogs), it MUST be marked as spam with an image_score of 0.0.
 
-Return ONLY a raw JSON object exactly matching this schema. Calculate the scores yourself between 0.0 and 1.0 based on these examples:
+You must first write out your reasoning, explaining EXACTLY what you see in the image and whether it matches the text. Then, provide the scores.
 
-Example 1 (Genuine complaint where image matches text):
+Return ONLY a raw JSON object exactly matching this schema:
 {
-  "text_score": 0.9,
-  "image_score": 0.8,
-  "fake_score": 0.85
+  "reasoning": "Explain what is in the image. Does it match the text? If it is a cat, flower, or selfie, state that it is spam.",
+  "text_score": <float between 0.0 and 1.0>,
+  "image_score": <float between 0.0 and 1.0>,
+  "fake_score": <float between 0.0 and 1.0>
 }
 
-Example 2 (Spam complaint where text is real but image is unrelated like flowers/animals):
-{
-  "text_score": 0.9,
-  "image_score": 0.0,
-  "fake_score": 0.0
-}
+Scoring guide:
+1. text_score: 1.0 if the text legitimately describes a real-world civic issue. 0.0 for spam/gibberish.
+2. image_score: 1.0 if the image clearly shows the civic issue (like a pothole or garbage pile). 0.0 if the image is unrelated (like animals, flowers, selfies, memes).
+3. fake_score: The final authenticity score. If the image is unrelated to the text, the fake_score MUST be 0.0 (Spam). 1.0 = Genuine issue.
 
-Scoring guide (0.0 to 1.0):
-1. text_score: Does the text legitimately describe a real-world civic issue matching the category? (Spam, gibberish, rants = 0.0)
-2. image_score: Look very closely at the image. Does it actually show a civic issue (like a pothole, broken streetlight, or garbage pile)? (Animals, flowers, selfies, unrelated = 0.0)
-3. fake_score: The final authenticity score. If the image is unrelated to the text (like a flower photo for a streetlight complaint), the fake_score MUST be 0.0. 1.0 = Genuine issue.
-
-IMPORTANT: Return ONLY the final JSON object. Do not include markdown blocks or any other text.
+IMPORTANT: Return ONLY the final JSON object. Do not include markdown blocks or any other text outside the JSON.
 `;
 
     let responseText = null;
@@ -211,6 +205,7 @@ IMPORTANT: Return ONLY the final JSON object. Do not include markdown blocks or 
       finalScore,
       authenticity,
       isSpam: authenticity === 'fake',
+      reasoning: result?.reasoning || '',
     };
 
   } catch (err) {
