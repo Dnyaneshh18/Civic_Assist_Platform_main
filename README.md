@@ -1,120 +1,120 @@
-# 🚀 CivicAssist — Intelligent Civic Engagement \& Governance Platform
+# 🚀 CivicAssist — Intelligent Civic Engagement & Governance Platform
 
-CivicAssist is an AI-powered municipal management and citizen engagement platform that streamlines reporting, AI verification, smart departmental dispatch, on-site resolution proof, and civic analytics across Maharashtra (Mumbai MMR, Pune \& PCMC).
+CivicAssist is an AI-powered municipal management and citizen engagement platform that streamlines reporting, AI verification, smart departmental dispatch, on-site resolution proof, and civic analytics across Maharashtra (Mumbai MMR, Pune & PCMC).
 
-\---
+---
 
-## 💡 Key Highlights \& Recent Additions
+## 💡 Key Highlights & Recent Additions
 
-* 📍 **Precise Pinpoint Geocoding \& GPS Navigation**: High-accuracy street, road, and campus resolution (e.g. MIT Alandi, Dehu - Alandi Road) with an interactive Leaflet map and **1-click Google Maps turn-by-turn navigation** for field inspection officers.
-* 🗺️ **Maharashtra \& Pune Dynamic Heatmap**: Live multi-region civic heatmap (`All Maharashtra`, `Pune / PCMC`, `Mumbai MMR`) with real-time issue clustering, density thresholds, and area risk rankings.
-* 🤖 **AI Authenticity \& Fake Report Guard**: Dual-modality AI (OpenAI CLIP + DistilBERT) analyzing image relevance and text veracity to flag fake/spam complaints automatically with admin review \& dismissal controls.
-* 📸 **Department Work \& Resolution Proof Workflow**: Department Heads receive assigned tickets, conduct field work, and upload on-site photographic proof before Central Admin verifies and closes the case with before/after comparisons.
-* 🌐 **Bilingual Civic Assistant (English \& Hindi)**: Built-in AI helper supporting instant issue reporting guidance, civic helplines, and FAQs in English and Hindi.
-* 👥 **Citizen Engagement \& Priority Signals**: Community upvoting/likes, comments, status timeline tracking, and leaderboard gamification.
+* 📍 **Precise Pinpoint Geocoding & GPS Navigation**: High-accuracy street, road, and campus resolution with an interactive Leaflet map and **1-click Google Maps turn-by-turn navigation** for field inspection officers.
+* 🗺️ **Maharashtra & Pune Dynamic Heatmap**: Live multi-region civic heatmap (`All Maharashtra`, `Pune / PCMC`, `Mumbai MMR`) with real-time issue clustering, density thresholds, and area risk rankings.
+* 🤖 **Universal Omni-Runner AI Engine**: Completely serverless, ultra-fast Node.js AI architecture supporting **NVIDIA NIM (LLaMA 3.2 Vision)**, **Groq**, and **Google Gemini**. Automatically detects API keys, routes traffic, and strictly flags fake/spam/unrelated images (e.g. animal photos, selfies) with 0.0 scores.
+* 📸 **Department Work & Resolution Proof Workflow**: Department Heads receive assigned tickets, conduct field work, and upload on-site photographic proof before Central Admin verifies and closes the case with before/after comparisons.
+* 🌐 **Bilingual Civic Assistant (English & Hindi)**: Built-in AI helper supporting instant issue reporting guidance, civic helplines, and FAQs in English and Hindi.
+* 👥 **Citizen Engagement & Priority Signals**: Community upvoting/likes, comments, status timeline tracking, and leaderboard gamification.
 
-\---
+---
 
 ## 🔄 End-to-End Workflow
 
 ```text
-\\\\\\\[Citizen Reports Issue] ──► \\\\\\\[Photo + GPS Geocoded] ──► \\\\\\\[AI Authenticity Scan (CLIP)]
+[Citizen Reports Issue] ──► [Photo + GPS Geocoded] ──► [Omni-Runner AI (NVIDIA/Groq/Gemini)]
                                                                   │
                                                         ┌─────────┴─────────┐
-                                                  \\\\\\\[Genuine]              \\\\\\\[Spam Flagged]
+                                                  [Genuine]              [Spam Flagged]
                                                         │                       │
-                                          \\\\\\\[Mumbai Central Admin]      \\\\\\\[Admin Review/Dismiss]
+                                          [Mumbai Central Admin]      [Admin Review/Dismiss]
                                                         │
-                                          \\\\\\\[Assign to Dept Head]
+                                          [Assign to Dept Head]
                                                         │
-                                        \\\\\\\[Field Officer Dispatched]
+                                        [Field Officer Dispatched]
                                       (1-Click Google Maps Nav)
                                                         │
-                                      \\\\\\\[Uploads On-Site Work Proof]
+                                      [Uploads On-Site Work Proof]
                                                         │
-                                     \\\\\\\[Central Admin Verifies \\\\\\\& Closes]
+                                     [Central Admin Verifies & Closes]
                                                         │
-                                          \\\\\\\[Public Status: Resolved]
+                                          [Public Status: Resolved]
 ```
 
-\---
+---
 
-## 🏛️ Roles \& Portals
+## 🏛️ Roles & Portals
 
 1. **Citizen Portal**
-
    * Phone OTP Login (+91).
    * Voice speech-to-text, photo upload, interactive pinpoint map.
    * Real-time status tracker (Pending → In Progress → Under Review → Resolved).
    * Public before/after resolution proof inspector.
 2. **Mumbai Central Admin Portal**
-
-   * Live Maharashtra issue analytics \& area severity rankings.
+   * Live Maharashtra issue analytics & area severity rankings.
    * AI Moderation Inspector (override or officially dismiss spam).
-   * Department assignment \& resolution proof approval/rejection.
+   * Department assignment & resolution proof approval/rejection.
 3. **Department Head Portal**
-
    * Dedicated dashboard for each department (Solid Waste, Roads, Street Lighting, Water, etc.).
-   * Exact site coordinates \& GPS navigation to dispatch field teams.
+   * Exact site coordinates & GPS navigation to dispatch field teams.
    * Proof submission form with Cloudinary image upload and field notes.
 
-\---
+---
 
 ## 🛠️ Tech Stack
 
 * **Frontend**: React 18, Vite, Tailwind CSS, Leaflet / React-Leaflet, FontAwesome
 * **Backend**: Node.js, Express.js (REST API)
 * **Database**: Supabase (PostgreSQL with real-time queries)
-* **Media Storage**: Cloudinary (incident photos \& resolution proofs)
-* **AI / ML**: Python 3, PyTorch, OpenAI CLIP, Transformers (DistilBERT)
-* **Maps \& Geocoding**: OpenStreetMap, Nominatim API, Leaflet, Google Maps Navigation Links
+* **Media Storage**: Cloudinary (incident photos & resolution proofs)
+* **AI Engine**: `@google/generative-ai`, `openai` SDK (for NVIDIA NIM and Groq vision models).
+* **Maps & Geocoding**: OpenStreetMap, Nominatim API, Leaflet, Google Maps Navigation Links
 
-\---
+---
 
 ## 📂 Project Structure
 
 ```text
-Civic\\\\\\\_Assist\\\\\\\_Platform/
-├── ai\\\\\\\_engine/           # Python CLIP \\\\\\\& DistilBERT AI models
+Civic_Assist_Platform/
 ├── backend/
-│   ├── config/          # Supabase \\\\\\\& Cloudinary configs
+│   ├── config/          # Supabase & Cloudinary configs
 │   ├── controllers/     # Admin, issues, and auth business logic
+│   ├── services/        # aiRunner.js (Universal Omni-Runner AI)
 │   ├── routes/          # Express API routes
 │   └── server.js        # Node.js entry point (:3001)
 ├── src/
 │   ├── admin/           # Admin Dashboard, Heatmap, Department workflows
 │   ├── components/      # Navbar, Sidebar, AI Helper, Modals
-│   ├── context/         # App \\\\\\\& Language State Context
-│   ├── lib/             # API client \\\\\\\& Supabase helpers
+│   ├── context/         # App & Language State Context
+│   ├── lib/             # API client & Supabase helpers
 │   └── screens/         # Feed, Report Issue, Issue Details, My Reports
 └── package.json
 ```
 
-\---
+---
 
 ## 🚀 Quick Start
 
-### 1\. Prerequisites
+### 1. Prerequisites
 
 * Node.js (v18+)
-* Python 3.10+ (for local AI engine)
 
-### 2\. Environment Setup
+### 2. Environment Setup
 
 Create a `.env` file in the root directory:
 
 ```env
 PORT=3001
-VITE\\\\\\\_API\\\\\\\_BASE=http://localhost:3001
-SUPABASE\\\\\\\_URL=your\\\\\\\_supabase\\\\\\\_url
-SUPABASE\\\\\\\_KEY=your\\\\\\\_supabase\\\\\\\_anon\\\\\\\_key
-CLOUDINARY\\\\\\\_CLOUD\\\\\\\_NAME=your\\\\\\\_cloud\\\\\\\_name
-CLOUDINARY\\\\\\\_API\\\\\\\_KEY=your\\\\\\\_api\\\\\\\_key
-CLOUDINARY\\\\\\\_API\\\\\\\_SECRET=your\\\\\\\_api\\\\\\\_secret
-ADMIN\\\\\\\_PASSWORD=your\\\\\\\_admin\\\\\\\_password
+VITE_API_BASE=http://localhost:3001
+SUPABASE_URL=your_supabase_url
+SUPABASE_KEY=your_supabase_anon_key
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+ADMIN_PASSWORD=your_admin_password
+
+# Universal AI Omni-Runner Key
+# Paste an NVIDIA NIM (nvapi-), Groq (gsk_), or Gemini (AIza/AQ.) key here
+GEMINI_API_KEY=nvapi-your_nvidia_key
 ```
 
-### 3\. Install \& Run
+### 3. Install & Run
 
 ```bash
 # Install dependencies
@@ -127,4 +127,3 @@ npm run dev
 * **Frontend**: `http://localhost:5000`
 * **Backend API**: `http://localhost:3001`
 * **Admin Access**: Sign in with Administrator or Department Head credentials.
-
