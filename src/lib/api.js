@@ -1,4 +1,4 @@
-const BASE = (import.meta.env.VITE_API_BASE || '') + '/api';
+const BASE = (import.meta.env.VITE_API_BASE || 'https://civic-assist-platform-main.onrender.com') + '/api';
 
 function getAuth() {
   return localStorage.getItem('ca_userId');
