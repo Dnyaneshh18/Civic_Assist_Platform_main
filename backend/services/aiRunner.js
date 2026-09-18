@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type, Schema } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 
 const AI_CATEGORY_MAP = {
   road: 'Road',
