@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 
 const AI_CATEGORY_MAP = {
   road: 'Road',
@@ -18,41 +19,37 @@ function toAiCategory(category) {
 
 export async function runAIAnalysis({ description, category, imageBuffer, imageMimeType, imageUrl }) {
   try {
-    if (!process.env.GEMINI_API_KEY) {
-      console.warn('GEMINI_API_KEY is not set. Skipping AI analysis.');
-      return {
-        textScore: 0,
-        imageScore: 0,
-        finalScore: 0,
-        authenticity: 'error',
-        isSpam: false,
-      };
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GROQ_API_KEY;
+    
+    if (!apiKey) {
+      console.warn('API Key is not set. Skipping AI analysis.');
+      return { textScore: 0, imageScore: 0, finalScore: 0, authenticity: 'error', isSpam: false };
     }
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const aiCategory = toAiCategory(category);
-    
-    let inlineData = null;
+    const isNvidia = apiKey.startsWith('nvapi-');
+    const isGroq = apiKey.startsWith('gsk_');
+    const isGemini = apiKey.startsWith('AIza') || apiKey.startsWith('AQ.');
 
+    let base64Image = null;
+    let mimeType = imageMimeType || 'image/jpeg';
+    
     if (imageBuffer) {
-      inlineData = {
-        data: imageBuffer.toString('base64'),
-        mimeType: imageMimeType || 'image/jpeg',
-      };
+      base64Image = imageBuffer.toString('base64');
     } else if (imageUrl) {
       try {
         const res = await fetch(imageUrl);
         if (res.ok) {
           const arr = await res.arrayBuffer();
-          inlineData = {
-            data: Buffer.from(arr).toString('base64'),
-            mimeType: res.headers.get('content-type') || 'image/jpeg',
-          };
+          mimeType = res.headers.get('content-type') || 'image/jpeg';
+          base64Image = Buffer.from(arr).toString('base64');
         }
       } catch (err) {
         console.warn(`AI image fetch failed: ${err.message}`);
       }
     }
+
+    const dataUri = base64Image ? `data:${mimeType};base64,${base64Image}` : null;
 
     const prompt = `
 You are an expert AI moderator for a civic complaint platform.
@@ -76,59 +73,116 @@ Scoring guide (0.0 to 1.0):
 IMPORTANT: Return ONLY valid JSON. Do not include markdown blocks or any other text.
 `;
 
-    const contents = [];
-    if (inlineData) {
-      contents.push({ inlineData });
-    }
-    contents.push(prompt);
-
-    const GEMINI_MODELS = [
-      'gemini-1.5-flash',
-      'gemini-1.5-flash-latest',
-      'gemini-1.5-pro',
-      'gemini-1.5-pro-latest',
-      'gemini-1.5-flash-8b',
-      'gemini-1.0-pro-vision-latest'
-    ];
-
     let responseText = null;
     let lastErr = null;
 
-    for (const modelId of GEMINI_MODELS) {
-      try {
-        const model = genAI.getGenerativeModel({
-          model: modelId,
-          generationConfig: {
-            responseMimeType: 'application/json',
+    // ==========================================
+    // 1. NVIDIA NIM INTEGRATION
+    // ==========================================
+    if (isNvidia) {
+      const openai = new OpenAI({ apiKey, baseURL: 'https://integrate.api.nvidia.com/v1' });
+      const NVIDIA_MODELS = ['meta/llama-3.2-11b-vision-instruct', 'meta/llama-3.2-90b-vision-instruct'];
+      
+      const content = [{ type: 'text', text: prompt }];
+      if (dataUri) content.push({ type: 'image_url', image_url: { url: dataUri } });
+
+      for (const modelId of NVIDIA_MODELS) {
+        try {
+          const response = await openai.chat.completions.create({
+            model: modelId,
+            messages: [{ role: 'user', content }],
             temperature: 0.1,
-          },
-        });
-
-        const resultAPI = await model.generateContent(contents);
-        responseText = resultAPI.response.text();
-        
-        if (responseText) {
-          console.log(`Successfully used Gemini model: ${modelId}`);
-          break; // Success! Break the loop.
+            max_tokens: 512
+          });
+          responseText = response.choices[0]?.message?.content;
+          if (responseText) break;
+        } catch (err) {
+          lastErr = err;
+          console.warn(`NVIDIA model ${modelId} failed: ${err.message}`);
         }
-      } catch (err) {
-        lastErr = err;
-        console.warn(`Gemini model ${modelId} failed: ${err.message}. Trying next model...`);
       }
+      if (!responseText) throw new Error(`All NVIDIA models failed. Last error: ${lastErr?.message}`);
+    } 
+    
+    // ==========================================
+    // 2. GROQ INTEGRATION
+    // ==========================================
+    else if (isGroq) {
+      const openai = new OpenAI({ apiKey, baseURL: 'https://api.groq.com/openai/v1' });
+      const GROQ_MODELS = [
+        'llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview',
+        'llama-3.2-11b-vision-instruct', 'llama-3.2-90b-vision-instruct',
+        'llama-3.2-11b-vision', 'llama-3.2-90b-vision'
+      ];
+      
+      const content = [{ type: 'text', text: prompt }];
+      if (dataUri) content.push({ type: 'image_url', image_url: { url: dataUri } });
+
+      for (const modelId of GROQ_MODELS) {
+        try {
+          const response = await openai.chat.completions.create({
+            model: modelId,
+            messages: [{ role: 'user', content }],
+            temperature: 0.1,
+            response_format: { type: 'json_object' }
+          });
+          responseText = response.choices[0]?.message?.content;
+          if (responseText) break;
+        } catch (err) {
+          lastErr = err;
+          console.warn(`Groq model ${modelId} failed: ${err.message}`);
+        }
+      }
+      if (!responseText) throw new Error(`All Groq vision models failed. Last error: ${lastErr?.message}`);
+    } 
+    
+    // ==========================================
+    // 3. GOOGLE GEMINI INTEGRATION
+    // ==========================================
+    else if (isGemini) {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const GEMINI_MODELS = [
+        'gemini-1.5-flash', 'gemini-1.5-flash-latest', 
+        'gemini-1.5-pro', 'gemini-1.5-flash-8b', 'gemini-1.0-pro-vision-latest'
+      ];
+
+      const contents = [];
+      if (base64Image) {
+        contents.push({ inlineData: { data: base64Image, mimeType } });
+      }
+      contents.push(prompt);
+
+      for (const modelId of GEMINI_MODELS) {
+        try {
+          const model = genAI.getGenerativeModel({
+            model: modelId,
+            generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
+          });
+          const resultAPI = await model.generateContent(contents);
+          responseText = resultAPI.response.text();
+          if (responseText) break;
+        } catch (err) {
+          lastErr = err;
+          console.warn(`Gemini model ${modelId} failed: ${err.message}`);
+        }
+      }
+      if (!responseText) throw new Error(`All Gemini models failed. Last error: ${lastErr?.message}`);
+    } 
+    
+    else {
+      throw new Error(`Unrecognized API Key format. Key must start with 'nvapi-', 'gsk_', 'AIza', or 'AQ.'.`);
     }
 
-    if (!responseText) {
-      throw new Error(`All Gemini models failed. Last error: ${lastErr?.message}`);
-    }
-
-    // Robust JSON parsing (strip markdown backticks if Gemini includes them by accident)
+    // ==========================================
+    // 4. ROBUST PARSING & RETURN
+    // ==========================================
     responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
     
     let result;
     try {
       result = JSON.parse(responseText);
     } catch (e) {
-      throw new Error(`Failed to parse AI JSON response. Raw text was: ${responseText}`);
+      throw new Error(`Failed to parse AI JSON response. Raw text: ${responseText}`);
     }
 
     const finalScore = Number(result?.fake_score ?? 0.5);
@@ -150,7 +204,7 @@ IMPORTANT: Return ONLY valid JSON. Do not include markdown blocks or any other t
       finalScore: 0,
       authenticity: 'error',
       isSpam: false,
-      rejectionReason: `[AI Error]: ${err.message}`,
+      rejectionReason: `[OmniAI Error]: ${err.message}`,
     };
   }
 }
