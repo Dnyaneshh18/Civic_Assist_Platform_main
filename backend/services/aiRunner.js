@@ -149,7 +149,19 @@ class AIPersistentServer extends EventEmitter {
 
   analyze(payload) {
     return new Promise((resolve, reject) => {
-      const entry = { payload, resolve, reject };
+      // Setup timeout to prevent hanging forever if Python freezes
+      const timeout = setTimeout(() => {
+        const idx = this.pendingRequests.findIndex(r => r === entry);
+        if (idx !== -1) this.pendingRequests.splice(idx, 1);
+        reject(new Error('AI analysis timed out (server likely ran out of memory)'));
+      }, 45000); // 45 seconds timeout
+
+      const entry = {
+        payload,
+        resolve: (val) => { clearTimeout(timeout); resolve(val); },
+        reject: (err) => { clearTimeout(timeout); reject(err); }
+      };
+      
       this.pendingRequests.push(entry);
 
       if (this.ready && this.proc && !this.proc.killed) {
