@@ -178,6 +178,12 @@ IMPORTANT: Return ONLY valid JSON. Do not include markdown blocks or any other t
     // ==========================================
     responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
     
+    // Extract JSON object if the model wrapped it in conversational text
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      responseText = jsonMatch[0];
+    }
+    
     let result;
     try {
       result = JSON.parse(responseText);
