@@ -128,6 +128,7 @@ Evaluate two aspects and return ONLY a JSON response:
       finalScore: 0,
       authenticity: 'error',
       isSpam: false,
+      rejectionReason: err.message,
     };
   }
 }
