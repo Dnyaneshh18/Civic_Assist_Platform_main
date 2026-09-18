@@ -1,29 +1,4 @@
-import { spawn } from 'child_process';
-import fs from 'fs';
-import fsPromises from 'fs/promises';
-import os from 'os';
-import path from 'path';
-import { randomUUID } from 'crypto';
-import { fileURLToPath } from 'url';
-import { EventEmitter } from 'events';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const SERVER_SCRIPT = path.join(__dirname, '../../ai_engine/server.py');
-const AI_ENGINE_DIR = path.join(__dirname, '../../ai_engine');
-
-function resolvePythonBin() {
-  if (process.env.AI_PYTHON_BIN) return process.env.AI_PYTHON_BIN;
-  const candidates = [
-    path.join(__dirname, '../../ai_engine/.venv/Scripts/python.exe'),
-    path.join(__dirname, '../../ai_engine/.venv/bin/python'),
-    path.join(__dirname, '../../.pythonlibs/bin/python'),
-  ];
-  const found = candidates.find((c) => fs.existsSync(c));
-  if (found) return found;
-  // On Linux (Render/Replit), prefer python3 over python
-  return process.platform === 'win32' ? 'python' : 'python3';
-}
+import { GoogleGenAI, Type, Schema } from '@google/genai';
 
 const AI_CATEGORY_MAP = {
   road: 'Road',
@@ -41,163 +16,98 @@ function toAiCategory(category) {
   return AI_CATEGORY_MAP[category] || 'Other';
 }
 
-async function writeTempImage(buffer, mimeType = 'image/jpeg') {
-  const extension = mimeType?.includes('png') ? '.png' : '.jpg';
-  const filePath = path.join(os.tmpdir(), `civic-ai-${randomUUID()}${extension}`);
-  await fsPromises.writeFile(filePath, buffer);
-  return filePath;
-}
-
-async function downloadImageToTemp(imageUrl) {
-  const res = await fetch(imageUrl);
-  if (!res.ok) throw new Error(`Image fetch failed (${res.status})`);
-  const arr = await res.arrayBuffer();
-  const mimeType = res.headers.get('content-type') || 'image/jpeg';
-  return writeTempImage(Buffer.from(arr), mimeType);
-}
-
-class AIPersistentServer extends EventEmitter {
-  constructor() {
-    super();
-    this.proc = null;
-    this.ready = false;
-    this.buffer = '';
-    this.pendingRequests = [];
-    this.starting = false;
-    this.restartTimer = null;
-  }
-
-  start() {
-    if (this.starting || (this.proc && !this.proc.killed)) return;
-    this.starting = true;
-    this.ready = false;
-
-    const pythonBin = resolvePythonBin();
-    console.log('[AI Server] Starting persistent AI process…');
-
-    this.proc = spawn(pythonBin, [SERVER_SCRIPT], {
-      cwd: AI_ENGINE_DIR,
-      windowsHide: true,
-    });
-
-    this.proc.stdout.on('data', (chunk) => {
-      this.buffer += chunk.toString();
-      const lines = this.buffer.split('\n');
-      this.buffer = lines.pop();
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        try {
-          const msg = JSON.parse(trimmed);
-          if (msg.status === 'ready') {
-            this.ready = true;
-            this.starting = false;
-            console.log('[AI Server] Ready — models loaded');
-            this._flushPending();
-            return;
-          }
-          const pending = this.pendingRequests.shift();
-          if (pending) pending.resolve(msg);
-        } catch (e) {
-          console.warn('[AI Server] Non-JSON stdout:', trimmed);
-        }
-      }
-    });
-
-    this.proc.stderr.on('data', (chunk) => {
-      const text = chunk.toString().trim();
-      if (text) console.log('[AI Server]', text);
-    });
-
-    this.proc.on('error', (err) => {
-      console.error('[AI Server] Process error:', err.message);
-      this._rejectAll(err);
-      this._scheduleRestart();
-    });
-
-    this.proc.on('close', (code) => {
-      console.warn(`[AI Server] Process exited (code ${code})`);
-      this.ready = false;
-      this.starting = false;
-      if (this.pendingRequests.length > 0) {
-        this._rejectAll(new Error('AI process exited'));
-      }
-      this._scheduleRestart();
-    });
-  }
-
-  _scheduleRestart() {
-    if (this.restartTimer) return;
-    this.restartTimer = setTimeout(() => {
-      this.restartTimer = null;
-      this.start();
-    }, 3000);
-  }
-
-  _flushPending() {
-    for (const req of [...this.pendingRequests]) {
-      if (this.ready && this.proc && !this.proc.killed) {
-        this.proc.stdin.write(JSON.stringify(req.payload) + '\n');
-      }
-    }
-  }
-
-  _rejectAll(err) {
-    const reqs = this.pendingRequests.splice(0);
-    for (const req of reqs) req.reject(err);
-  }
-
-  analyze(payload) {
-    return new Promise((resolve, reject) => {
-      // Setup timeout to prevent hanging forever if Python freezes
-      const timeout = setTimeout(() => {
-        const idx = this.pendingRequests.findIndex(r => r === entry);
-        if (idx !== -1) this.pendingRequests.splice(idx, 1);
-        reject(new Error('AI analysis timed out (server likely ran out of memory)'));
-      }, 45000); // 45 seconds timeout
-
-      const entry = {
-        payload,
-        resolve: (val) => { clearTimeout(timeout); resolve(val); },
-        reject: (err) => { clearTimeout(timeout); reject(err); }
-      };
-      
-      this.pendingRequests.push(entry);
-
-      if (this.ready && this.proc && !this.proc.killed) {
-        this.proc.stdin.write(JSON.stringify(payload) + '\n');
-      } else if (!this.starting && (!this.proc || this.proc.killed)) {
-        this.start();
-      }
-    });
-  }
-}
-
-const aiServer = new AIPersistentServer();
-aiServer.start();
-
 export async function runAIAnalysis({ description, category, imageBuffer, imageMimeType, imageUrl }) {
-  let tempImagePath = null;
   try {
+    if (!process.env.GEMINI_API_KEY) {
+      console.warn('GEMINI_API_KEY is not set. Skipping AI analysis.');
+      return {
+        textScore: 0,
+        imageScore: 0,
+        finalScore: 0,
+        authenticity: 'error',
+        isSpam: false,
+      };
+    }
+
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const aiCategory = toAiCategory(category);
+    
+    let inlineData = null;
+
     if (imageBuffer) {
-      tempImagePath = await writeTempImage(imageBuffer, imageMimeType);
+      inlineData = {
+        data: imageBuffer.toString('base64'),
+        mimeType: imageMimeType || 'image/jpeg',
+      };
     } else if (imageUrl) {
       try {
-        tempImagePath = await downloadImageToTemp(imageUrl);
+        const res = await fetch(imageUrl);
+        if (res.ok) {
+          const arr = await res.arrayBuffer();
+          inlineData = {
+            data: Buffer.from(arr).toString('base64'),
+            mimeType: res.headers.get('content-type') || 'image/jpeg',
+          };
+        }
       } catch (err) {
-        console.warn(`AI image download failed, continuing without image: ${err.message}`);
+        console.warn(`AI image fetch failed: ${err.message}`);
       }
     }
 
-    const result = await aiServer.analyze({
-      description: description || '',
-      category: toAiCategory(category),
-      image_path: tempImagePath,
+    const prompt = `
+You are an expert AI moderator for a civic complaint platform.
+Analyze the following civic issue report to determine if it is a genuine, actionable civic complaint or fake/spam.
+
+Category Selected by User: ${aiCategory}
+Complaint Description: "${description || 'No description provided.'}"
+
+Evaluate two aspects and return ONLY a JSON response:
+1. text_score (0.0 to 1.0): Does the text legitimately describe a real-world civic issue matching the category? (Spam, gibberish, rants, jokes = 0.0)
+2. image_score (0.0 to 1.0): If an image is provided, does it visually show the civic issue matching the category and description? (Memes, selfies, unrelated photos, screenshots = 0.0)
+3. fake_score (0.0 to 1.0): The final authenticity score. 1.0 = Genuine issue, 0.0 = Fake/Spam. (If it's clearly an animal photo or unrelated image, give it a low score).
+`;
+
+    const contents = [];
+    if (inlineData) {
+      contents.push({
+        role: 'user',
+        parts: [
+          { inlineData },
+          { text: prompt }
+        ]
+      });
+    } else {
+      contents.push({
+        role: 'user',
+        parts: [{ text: prompt }]
+      });
+    }
+
+    const responseSchema = {
+      type: Type.OBJECT,
+      properties: {
+        text_score: { type: Type.NUMBER, description: "Text authenticity score (0.0 to 1.0)" },
+        image_score: { type: Type.NUMBER, description: "Image authenticity score (0.0 to 1.0)" },
+        fake_score: { type: Type.NUMBER, description: "Final authenticity score (1.0 = Genuine, 0.0 = Fake/Spam)" },
+      },
+      required: ["text_score", "image_score", "fake_score"]
+    };
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema,
+        temperature: 0.2, // Low temperature for consistent classification
+      },
     });
 
-    if (result?.error) {
-      console.warn('AI server returned error:', result.error);
+    if (!response.text) {
+      throw new Error("Gemini returned empty text");
     }
+
+    const result = JSON.parse(response.text);
 
     const finalScore = Number(result?.fake_score ?? 0.5);
     const authenticity = finalScore < 0.5 ? 'fake' : 'real';
@@ -209,6 +119,7 @@ export async function runAIAnalysis({ description, category, imageBuffer, imageM
       authenticity,
       isSpam: authenticity === 'fake',
     };
+
   } catch (err) {
     console.error('AI runner failed:', err.message);
     return {
@@ -218,9 +129,5 @@ export async function runAIAnalysis({ description, category, imageBuffer, imageM
       authenticity: 'error',
       isSpam: false,
     };
-  } finally {
-    if (tempImagePath) {
-      await fsPromises.unlink(tempImagePath).catch(() => {});
-    }
   }
 }
