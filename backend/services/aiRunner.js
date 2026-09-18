@@ -58,11 +58,11 @@ Analyze the following civic issue report to determine if it is a genuine, action
 Category Selected by User: ${aiCategory}
 Complaint Description: "${description || 'No description provided.'}"
 
-Evaluate the authenticity and return ONLY a raw JSON object exactly matching this schema:
+Evaluate the authenticity and return ONLY a raw JSON object exactly matching this schema format. You MUST calculate your own scores between 0.0 and 1.0 based on the image and text provided. Do NOT just copy these example numbers:
 {
-  "text_score": 0.9,
-  "image_score": 0.1,
-  "fake_score": 0.2
+  "text_score": 0.95,
+  "image_score": 0.90,
+  "fake_score": 0.92
 }
 
 Scoring guide (0.0 to 1.0):
