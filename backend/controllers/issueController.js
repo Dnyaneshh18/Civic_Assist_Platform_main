@@ -145,24 +145,23 @@ export async function createIssue(req, res) {
 
     if (insertError) throw insertError;
 
-    res.status(201).json(formatForClient(issue, req.user.userId));
-
     const imageBuffer = Buffer.from(req.file.buffer);
     const imageMimeType = req.file.mimetype;
     const issueId = issue.id;
     const descTrimmed = description.trim();
 
-    Promise.all([
+    // Await both the image upload and the AI analysis before returning the response
+    // This ensures the issue is fully "pre-scanned" and populated when the admin views it.
+    await Promise.all([
       uploadBuffer(imageBuffer).then(async (result) => {
         await supabase
           .from('issues')
           .update({ image_url: result.secure_url })
           .eq('id', issueId);
+        issue.image_url = result.secure_url; // update local object
         console.log(`Image uploaded for ${issueId}: ${result.secure_url}`);
-        return result.secure_url;
       }).catch((err) => {
-        console.error(`Background Cloudinary upload failed for ${issueId}:`, err.message);
-        return null;
+        console.error(`Cloudinary upload failed for ${issueId}:`, err.message);
       }),
 
       runAIAnalysis({ description: descTrimmed, category, imageBuffer, imageMimeType })
@@ -184,7 +183,12 @@ export async function createIssue(req, res) {
               icon: 'fa-triangle-exclamation',
               color: '#ef4444',
             });
+            issue.status = 'rejected';
+            issue.assigned_to = 'Spam Queue';
           }
+          
+          issue.ai_analysis = aiResult;
+          issue.timeline = timeline;
 
           await supabase
             .from('issues')
@@ -198,9 +202,12 @@ export async function createIssue(req, res) {
           console.log(`AI analysis complete for ${issueId}: score=${aiResult.finalScore}, spam=${aiResult.isSpam}`);
         })
         .catch((err) => {
-          console.error(`Background AI analysis failed for ${issueId}:`, err.message);
+          console.error(`AI analysis failed for ${issueId}:`, err.message);
         }),
     ]);
+
+    // Send the response AFTER the AI scan has completed and updated the local issue object
+    res.status(201).json(formatForClient(issue, req.user.userId));
 
   } catch (err) {
     console.error('POST /issues error:', err);
