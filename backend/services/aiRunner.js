@@ -58,17 +58,18 @@ Analyze the following civic issue report to determine if it is a genuine, action
 Category Selected by User: ${aiCategory}
 Complaint Description: "${description || 'No description provided.'}"
 
-Evaluate two aspects and return ONLY a raw JSON object exactly matching this schema:
+Evaluate the authenticity and return ONLY a raw JSON object exactly matching this schema:
 {
   "text_score": 0.9,
-  "image_score": 0.8,
-  "fake_score": 0.85
+  "image_score": 0.1,
+  "fake_score": 0.2
 }
 
 Scoring guide (0.0 to 1.0):
 1. text_score: Does the text legitimately describe a real-world civic issue matching the category? (Spam, gibberish, rants = 0.0)
-2. image_score: If an image is provided, does it visually show the civic issue matching the category and description? (Memes, selfies, unrelated = 0.0)
-3. fake_score: The final authenticity score. 1.0 = Genuine issue, 0.0 = Fake/Spam.
+2. image_score: Look very closely at the image. Does it actually show a civic issue (like a pothole, broken streetlight, or garbage pile)? 
+   CRITICAL WARNING: If the image is a picture of an animal (like a cat, dog, bird), a meme, a selfie, a cartoon, or completely unrelated to the description, YOU MUST SCORE IT 0.0.
+3. fake_score: The final authenticity score. If either the text or the image is clearly fake, unrelated, or spam (like an animal photo for a garbage complaint), the fake_score MUST be 0.0. 1.0 = Genuine issue.
 
 IMPORTANT: Return ONLY valid JSON. Do not include markdown blocks or any other text.
 `;
