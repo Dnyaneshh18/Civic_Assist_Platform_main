@@ -19,7 +19,10 @@ function resolvePythonBin() {
     path.join(__dirname, '../../ai_engine/.venv/bin/python'),
     path.join(__dirname, '../../.pythonlibs/bin/python'),
   ];
-  return candidates.find((c) => fs.existsSync(c)) || 'python';
+  const found = candidates.find((c) => fs.existsSync(c));
+  if (found) return found;
+  // On Linux (Render/Replit), prefer python3 over python
+  return process.platform === 'win32' ? 'python' : 'python3';
 }
 
 const AI_CATEGORY_MAP = {
@@ -197,10 +200,10 @@ export async function runAIAnalysis({ description, category, imageBuffer, imageM
   } catch (err) {
     console.error('AI runner failed:', err.message);
     return {
-      textScore: 0.5,
-      imageScore: 0.5,
-      finalScore: 0.5,
-      authenticity: 'unknown',
+      textScore: 0,
+      imageScore: 0,
+      finalScore: 0,
+      authenticity: 'error',
       isSpam: false,
     };
   } finally {

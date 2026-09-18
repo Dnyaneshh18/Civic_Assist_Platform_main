@@ -158,7 +158,8 @@ function ComplaintDetail({
   const isAssigned = !!complaint.assignedTo;
   const isSpam = !!complaint.aiAnalysis?.isSpam;
   const isScanning = complaint.aiAnalysis?.authenticity === 'scanning';
-  const hasAI = !isScanning && complaint.aiAnalysis && typeof complaint.aiAnalysis.finalScore === 'number';
+  const isAIError = complaint.aiAnalysis?.authenticity === 'error' || complaint.aiAnalysis?.authenticity === 'unknown';
+  const hasAI = !isScanning && !isAIError && complaint.aiAnalysis && typeof complaint.aiAnalysis.finalScore === 'number';
 
   // Precision Pinpoint Coordinates & On-Site Navigation setup
   const rawLat = Number(complaint.coordinates?.lat);
@@ -715,21 +716,23 @@ function ComplaintDetail({
           <div className={`rounded-2xl border p-5 shadow-sm space-y-4 ${
             isScanning
               ? (dark ? 'bg-blue-950/20 border-blue-700/30' : 'bg-blue-50/80 border-blue-200')
-              : isSpam
-                ? (dark ? 'bg-red-950/30 border-red-700/50' : 'bg-red-50 border-red-200')
-                : (dark ? 'bg-emerald-950/20 border-emerald-700/30' : 'bg-emerald-50/80 border-emerald-200')
+              : isAIError
+                ? (dark ? 'bg-amber-950/20 border-amber-700/30' : 'bg-amber-50/80 border-amber-200')
+                : isSpam
+                  ? (dark ? 'bg-red-950/30 border-red-700/50' : 'bg-red-50 border-red-200')
+                  : (dark ? 'bg-emerald-950/20 border-emerald-700/30' : 'bg-emerald-50/80 border-emerald-200')
           }`}>
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isScanning ? 'bg-blue-500' : isSpam ? 'bg-red-500' : 'bg-emerald-500'}`}>
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isScanning ? 'bg-blue-500' : isAIError ? 'bg-amber-500' : isSpam ? 'bg-red-500' : 'bg-emerald-500'}`}>
                   {isScanning
                     ? <div className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                    : <i className={`fas ${isSpam ? 'fa-shield-virus' : 'fa-shield-check'} text-white text-sm`} />
+                    : <i className={`fas ${isAIError ? 'fa-triangle-exclamation' : isSpam ? 'fa-shield-virus' : 'fa-shield-check'} text-white text-sm`} />
                   }
                 </div>
                 <div>
-                  <p className={`text-xs font-black ${isScanning ? (dark ? 'text-blue-300' : 'text-blue-700') : isSpam ? (dark ? 'text-red-300' : 'text-red-700') : (dark ? 'text-emerald-300' : 'text-emerald-700')}`}>
-                    {isScanning ? 'AI Scan in Progress' : isSpam ? 'Flagged as Fake / Spam' : 'Verified as Genuine'}
+                  <p className={`text-xs font-black ${isScanning ? (dark ? 'text-blue-300' : 'text-blue-700') : isAIError ? (dark ? 'text-amber-300' : 'text-amber-700') : isSpam ? (dark ? 'text-red-300' : 'text-red-700') : (dark ? 'text-emerald-300' : 'text-emerald-700')}`}>
+                    {isScanning ? 'AI Scan in Progress' : isAIError ? 'AI Scan Failed — Click Re-scan' : isSpam ? 'Flagged as Fake / Spam' : 'Verified as Genuine'}
                   </p>
                   <p className={`text-[10px] ${dark ? 'text-slate-500' : 'text-slate-400'}`}>AI Authenticity Analysis</p>
                 </div>
@@ -769,6 +772,12 @@ function ComplaintDetail({
                     ? 'Final score below 0.5 — text or image did not match the reported issue category.'
                     : 'Final score above 0.5 — content aligns with the reported category and appears genuine.'}
                 </p>
+              </div>
+            ) : isAIError ? (
+              <div className="flex flex-col items-center gap-2 py-3">
+                <i className={`fas fa-triangle-exclamation text-2xl ${dark ? 'text-amber-400' : 'text-amber-500'}`} />
+                <p className={`text-xs font-semibold ${dark ? 'text-amber-300' : 'text-amber-600'}`}>AI analysis could not be completed</p>
+                <p className={`text-[10px] ${dark ? 'text-slate-500' : 'text-slate-400'}`}>The AI server may be offline. Click Re-scan to try again.</p>
               </div>
             ) : (
               <p className={`text-xs ${dark ? 'text-slate-500' : 'text-slate-400'}`}>No AI scan data. Click Re-scan to analyze.</p>
@@ -2180,7 +2189,9 @@ function ComplaintsTab({ dark, complaints, onSelect, isDeptHead, adminDept, admi
       <div className="space-y-2.5">
         {filtered.map((c, i) => {
           const dept = DEPT_MAP[c.category];
-          const isReal = !c.aiAnalysis?.isSpam;
+          const isReal = c.aiAnalysis?.authenticity === 'real';
+          const isFake = !!c.aiAnalysis?.isSpam;
+          const isAIFailed = c.aiAnalysis?.authenticity === 'error' || c.aiAnalysis?.authenticity === 'unknown' || (!isReal && !isFake);
           const deptColor = dept?.color || '#2563eb';
           const hasProof = !!c.resolutionProof?.imageUrl;
 
@@ -2245,14 +2256,16 @@ function ComplaintsTab({ dark, complaints, onSelect, isDeptHead, adminDept, admi
               <div className="flex flex-col items-end justify-center gap-2 px-4 py-3.5 flex-shrink-0">
                 {/* Status */}
                 <span className={`text-[10px] font-bold px-3 py-1.5 rounded-full border whitespace-nowrap ${statusCls(c.status, dark)}`}>{c.status}</span>
-                {/* Real / Fake */}
+                {/* Real / Fake / AI Failed */}
                 <span className={`inline-flex items-center gap-1.5 text-[10px] font-black px-2.5 py-1 rounded-full border whitespace-nowrap ${
                   isReal
                     ? (dark ? 'bg-emerald-900/30 text-emerald-300 border-emerald-700' : 'bg-emerald-50 text-emerald-700 border-emerald-200')
-                    : (dark ? 'bg-red-900/30 text-red-300 border-red-700' : 'bg-red-50 text-red-700 border-red-200')
+                    : isFake
+                      ? (dark ? 'bg-red-900/30 text-red-300 border-red-700' : 'bg-red-50 text-red-700 border-red-200')
+                      : (dark ? 'bg-amber-900/30 text-amber-300 border-amber-700' : 'bg-amber-50 text-amber-700 border-amber-200')
                 }`}>
-                  <i className={`fas ${isReal ? 'fa-circle-check' : 'fa-triangle-exclamation'} text-[9px]`} />
-                  {isReal ? 'Real' : 'Fake'}
+                  <i className={`fas ${isReal ? 'fa-circle-check' : isFake ? 'fa-triangle-exclamation' : 'fa-circle-question'} text-[9px]`} />
+                  {isReal ? 'Real' : isFake ? 'Fake' : 'AI Failed'}
                 </span>
                 {/* Category chip — desktop */}
                 <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-lg whitespace-nowrap" style={{ background: `${deptColor}14`, color: deptColor }}>

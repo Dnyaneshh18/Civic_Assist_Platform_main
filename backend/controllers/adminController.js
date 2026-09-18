@@ -176,7 +176,7 @@ function formatAdminIssue(issue) {
   const likesCount = supporters.length;
   const aiAnalysis = issue.ai_analysis || issue.aiAnalysis || {};
   const authenticity = aiAnalysis.authenticity || 'unknown';
-  const aiBadge = authenticity === 'fake' ? 'Fake (Spam)' : authenticity === 'real' ? 'Real' : authenticity === 'scanning' ? 'Scanning...' : 'Unknown';
+  const aiBadge = authenticity === 'fake' ? 'Fake (Spam)' : authenticity === 'real' ? 'Real' : authenticity === 'scanning' ? 'Scanning...' : authenticity === 'error' ? 'AI Failed' : 'Unknown';
   const proof = extractResolutionProof(issue);
   let coords = issue.coordinates || null;
   if ((!coords || !coords.lat || !coords.lng) && issue.location) {

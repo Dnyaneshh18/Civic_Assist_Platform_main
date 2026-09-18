@@ -49,10 +49,10 @@ for line in sys.stdin:
         sys.stderr.write(f"Server error: {e}\n")
         result = {
             "error": str(e),
-            "text_score": 0.5,
-            "image_score": 0.5,
-            "fake_score": 0.5,
-            "is_suspicious": False,
+            "text_score": 0,
+            "image_score": 0,
+            "fake_score": 0,
+            "is_suspicious": True,
         }
 
     sys.stdout.write(json.dumps(result) + "\n")

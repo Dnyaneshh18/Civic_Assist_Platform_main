@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: civic-assist-backend
+    runtime: node
+    buildCommand: chmod +x render-build.sh && ./render-build.sh
+    startCommand: node backend/server.js
+    envVars:
+      - key: AI_PYTHON_BIN
+        value: python3
+      - key: NODE_ENV
+        value: production

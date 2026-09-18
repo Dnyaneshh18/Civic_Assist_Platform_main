@@ -55,6 +55,9 @@ NEGATIVE_PROMPTS = [
     "a sky or cloud photo",
     "a person or crowd photo",
     "an animal photo",
+    "a photo of a cat",
+    "a photo of a dog",
+    "a photo of a pet animal",
     "a building exterior photo",
     "a map or diagram",
 ]
@@ -83,8 +86,8 @@ def analyze_image(image_file, category="Other"):
         scores = similarity[0].tolist()
         n_positive = len(positive_prompts)
 
-        positive_score = sum(scores[:n_positive]) / n_positive
-        negative_score = sum(scores[n_positive:]) / len(NEGATIVE_PROMPTS)
+        positive_score = max(scores[:n_positive])
+        negative_score = max(scores[n_positive:])
 
         final_score = positive_score / (positive_score + negative_score + 1e-6)
 
