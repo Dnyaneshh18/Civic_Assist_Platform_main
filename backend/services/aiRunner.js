@@ -83,21 +83,46 @@ IMPORTANT: Return ONLY valid JSON. Do not include markdown blocks or any other t
       });
     }
 
-    const response = await groq.chat.completions.create({
-      model: 'llama-3.2-11b-vision-instruct',
-      messages: [
-        {
-          role: 'user',
-          content: content,
-        }
-      ],
-      temperature: 0.1,
-      response_format: { type: 'json_object' }
-    });
+    const VISION_MODELS = [
+      'llama-3.2-11b-vision-preview',
+      'llama-3.2-90b-vision-preview',
+      'llama-3.2-11b-vision-instruct',
+      'llama-3.2-90b-vision-instruct',
+      'llama-3.2-11b-vision',
+      'llama-3.2-90b-vision'
+    ];
 
-    const responseText = response.choices[0]?.message?.content;
+    let responseText = null;
+    let lastErr = null;
+
+    for (const modelId of VISION_MODELS) {
+      try {
+        const response = await groq.chat.completions.create({
+          model: modelId,
+          messages: [
+            {
+              role: 'user',
+              content: content,
+            }
+          ],
+          temperature: 0.1,
+          response_format: { type: 'json_object' }
+        });
+        
+        responseText = response.choices[0]?.message?.content;
+        if (responseText) {
+          console.log(`Successfully used Groq model: ${modelId}`);
+          break; // Success! Break the loop.
+        }
+      } catch (err) {
+        lastErr = err;
+        console.warn(`Groq model ${modelId} failed: ${err.message}. Trying next model...`);
+        // If it's a 400 or 404 about the model not existing, continue to the next one
+      }
+    }
+
     if (!responseText) {
-      throw new Error("Groq returned empty text");
+      throw new Error(`All Groq vision models failed. Last error: ${lastErr?.message}`);
     }
 
     const result = JSON.parse(responseText);
